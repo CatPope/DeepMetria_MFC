@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+dist/
+build/
+
+# Environment
+.env
+.env.*
+
+# Secrets
+secrets/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# OMC sessions
+.omc/
