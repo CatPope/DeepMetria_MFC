@@ -1,580 +1,380 @@
-# DeepMetria 배포 가이드
+# DeepMetria MFC 배포 가이드
 
 ## 목차
-1. 사전 요구사항 ................................. L14
-2. 로컬 개발 환경 구축 ............................ L54
-3. Docker 배포 ................................... L129
-4. 프로덕션 배포 (Cloudflare/Vercel) ........... L251
-5. DB 마이그레이션 ............................... L396
-6. 모니터링 및 로깅 .............................. L452
-7. 롤백 절차 ..................................... L506
+1. 사전 요구사항 ................................. L18
+2. Release 빌드 절차 ............................. L54
+3. 인스톨러 빌드 (Inno Setup / WiX) .............. L94
+4. GitHub Actions CI/CD .......................... L164
+5. 자동 업데이트 메커니즘 ........................ L219
+6. 배포 후 검증 및 롤백 절차 ..................... L264
+
+
+
+
 
 ---
 
 ## 1. 사전 요구사항
 
-### 필수 설치 항목
+### 빌드 머신 환경
 
-#### 백엔드 개발 환경
-- Python 3.11 이상
-- pip 또는 uv (패키지 관리자)
-- PostgreSQL 15
-- Redis 7
-- Alembic (DB 마이그레이션 도구)
+| 항목 | 요구사항 |
+|------|----------|
+| OS | Windows 10/11 x64 |
+| Visual Studio | 2022 (MFC 워크로드 포함) |
+| MSBuild | VS2022와 함께 설치됨 |
+| vcpkg | C:\vcpkg (의존 라이브러리 관리) |
+| Inno Setup | 6.x (EXE 인스톨러) 또는 WiX 4.x (MSI) |
+| Git | 2.x |
+| GitHub Actions Runner | self-hosted 또는 windows-latest |
 
-#### 프론트엔드 개발 환경
-- Node.js 20 LTS
-- npm 또는 yarn
+### 코드서명 인증서 (프로덕션)
 
-#### 배포 환경
-- Docker 및 Docker Compose 20.10+
-- Cloudflare 계정 (R2 스토리지 및 Pages)
-- Vercel 계정 (프론트엔드 호스팅)
-- AWS CLI 또는 boto3 (Cloudflare R2 접근)
+Windows 배포 시 SmartScreen 경고 방지를 위해 코드서명 필수:
+- **EV Code Signing Certificate** (DigiCert, Sectigo 등)
+- `signtool.exe` (Windows SDK 포함)
 
-### 환경 변수 설정
-
-백엔드 `.env.local`:
-```
-DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/deepmetria
-REDIS_URL=redis://localhost:6379/0
-SECRET_KEY=your-secret-key-here
-R2_ACCOUNT_ID=your-account-id
-R2_ACCESS_KEY_ID=your-access-key
-R2_SECRET_ACCESS_KEY=your-secret-key
-R2_BUCKET_NAME=deepmetria
+```powershell
+# 서명 예시
+signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
+    /f "cert.pfx" /p "password" "DeepMetria_Setup.exe"
 ```
 
-프론트엔드 `.env.local`:
-```
-NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_APP_ENV=development
-```
+### 배포 채널
 
-## 2. 로컬 개발 환경 구축
+| 채널 | 방식 | 대상 |
+|------|------|------|
+| GitHub Releases | EXE/MSI 인스톨러 첨부 | 최종 사용자 |
+| GitHub Actions | 자동 빌드 + 업로드 | CI 아티팩트 |
+| 자동 업데이트 | GitHub Releases API 조회 | 설치된 앱 |
 
-### 2.1 저장소 복제
+---
 
-```bash
-git clone https://github.com/your-org/DeepMetria.git
-cd DeepMetria
-```
+## 2. Release 빌드 절차
 
-### 2.2 백엔드 설정
+### 2.1 의존 라이브러리 설치 확인
 
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -e ".[dev]"
+```powershell
+C:\vcpkg\vcpkg install sqlite3:x64-windows
+C:\vcpkg\vcpkg install curl[openssl]:x64-windows
+C:\vcpkg\vcpkg install nlohmann-json:x64-windows
+C:\vcpkg\vcpkg install openssl:x64-windows
 ```
 
-환경 변수 파일 생성:
-```bash
-cp .env.example .env.local
-# .env.local 편집하여 실제 값 입력
+### 2.2 버전 번호 갱신
+
+`src/common/Version.h`:
+```cpp
+#define DM_VERSION_MAJOR 1
+#define DM_VERSION_MINOR 0
+#define DM_VERSION_PATCH 0
+#define DM_VERSION_STR   "1.0.0"
 ```
 
-### 2.3 프론트엔드 설정
+`DeepMetria_MFC.rc` 내 `FILEVERSION`, `PRODUCTVERSION`도 동일하게 갱신합니다.
 
-```bash
-cd frontend
-node --version  # 20.x 확인
-npm ci
+### 2.3 MSBuild Release 빌드
+
+```powershell
+# VS2022 개발자 PowerShell에서 실행
+msbuild DeepMetria_MFC.sln `
+    /p:Configuration=Release `
+    /p:Platform=x64 `
+    /p:VcpkgEnabled=true `
+    /m  # 병렬 빌드
 ```
 
-환경 변수 파일 생성:
-```bash
-cp .env.example .env.local
-# .env.local 편집하여 실제 값 입력
+### 2.4 출력 디렉터리 확인
+
+```
+x64\Release\
+├── DeepMetria_MFC.exe          # 메인 실행 파일
+├── libcurl.dll
+├── libssl-3-x64.dll
+├── libcrypto-3-x64.dll
+└── (VC++ 런타임 DLL — 인스톨러에 포함)
 ```
 
-### 2.4 Docker로 데이터베이스 실행
+### 2.5 빌드 검증
 
-```bash
-# 프로젝트 루트에서
-docker-compose up -d postgres redis
+```powershell
+# 의존성 확인
+dumpbin /dependents x64\Release\DeepMetria_MFC.exe
+
+# 간단한 실행 확인
+.\x64\Release\DeepMetria_MFC.exe --version
 ```
 
-상태 확인:
-```bash
-docker-compose ps
+---
+
+## 3. 인스톨러 빌드 (Inno Setup / WiX)
+
+### 3.1 Inno Setup으로 EXE 인스톨러 생성 (권장)
+
+`installer\setup.iss`:
+```ini
+[Setup]
+AppName=DeepMetria
+AppVersion={#DM_VERSION}
+AppPublisher=DeepMetria Team
+DefaultDirName={autopf}\DeepMetria
+DefaultGroupName=DeepMetria
+OutputBaseFilename=DeepMetria_Setup_{#DM_VERSION}
+Compression=lzma2/ultra64
+SolidCompression=yes
+ArchitecturesAllowed=x64
+ArchitecturesInstallIn64BitMode=x64
+MinVersion=10.0.19041  ; Windows 10 20H1
+
+[Files]
+Source: "..\x64\Release\DeepMetria_MFC.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\x64\Release\libcurl.dll";        DestDir: "{app}"; Flags: ignoreversion
+Source: "..\x64\Release\libssl-3-x64.dll";  DestDir: "{app}"; Flags: ignoreversion
+Source: "..\x64\Release\libcrypto-3-x64.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\third_party\vcredist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+
+[Icons]
+Name: "{group}\DeepMetria"; Filename: "{app}\DeepMetria_MFC.exe"
+Name: "{commondesktop}\DeepMetria"; Filename: "{app}\DeepMetria_MFC.exe"
+
+[Run]
+Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/quiet /norestart"; \
+    StatusMsg: "Visual C++ 런타임 설치 중..."; \
+    Check: VCRedistNeedsInstall
+
+[Code]
+function VCRedistNeedsInstall: Boolean;
+begin
+  Result := not RegKeyExists(HKLM,
+    'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64');
+end;
 ```
 
-### 2.5 DB 마이그레이션 (로컬)
-
-```bash
-cd backend
-alembic upgrade head
+**빌드:**
+```powershell
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\setup.iss `
+    /DDM_VERSION=1.0.0
 ```
 
-### 2.6 개발 서버 시작
+출력: `installer\Output\DeepMetria_Setup_1.0.0.exe`
 
-터미널 1 - 백엔드:
-```bash
-cd backend
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+### 3.2 WiX 4로 MSI 인스톨러 생성 (엔터프라이즈 배포 시)
+
+```powershell
+# WiX 4 설치
+dotnet tool install --global wix
+
+# MSI 빌드
+wix build installer\product.wxs -o installer\DeepMetria_1.0.0.msi
 ```
 
-터미널 2 - 프론트엔드:
-```bash
-cd frontend
-npm run dev
+`installer\product.wxs` 핵심 구조:
+```xml
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="DeepMetria" Version="1.0.0"
+           Manufacturer="DeepMetria Team"
+           UpgradeCode="PUT-GUID-HERE">
+    <MajorUpgrade DowngradeErrorMessage="더 높은 버전이 이미 설치되어 있습니다." />
+    <Feature Id="Main">
+      <ComponentGroupRef Id="AppFiles" />
+    </Feature>
+  </Package>
+</Wix>
 ```
 
-확인:
-- 백엔드: http://localhost:8000/docs
-- 프론트엔드: http://localhost:3000
+### 3.3 코드서명 (프로덕션)
 
-## 3. Docker 배포
-
-### 3.1 Docker 이미지 빌드
-
-백엔드 Dockerfile 생성 (backend/Dockerfile):
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-COPY pyproject.toml .
-RUN pip install --no-cache-dir -e .
-
-COPY . .
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```powershell
+signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
+    /f "$(CERT_PFX)" /p "$(CERT_PASSWORD)" `
+    "installer\Output\DeepMetria_Setup_1.0.0.exe"
 ```
 
-프론트엔드 Dockerfile 생성 (frontend/Dockerfile):
-```dockerfile
-FROM node:20-alpine AS builder
+---
 
-WORKDIR /app
+## 4. GitHub Actions CI/CD
 
-COPY package.json package-lock.json ./
-RUN npm ci
+### 4.1 워크플로 파일
 
-COPY . .
-RUN npm run build
-
-FROM node:20-alpine
-
-WORKDIR /app
-
-COPY --from=builder /app/.next .next
-COPY --from=builder /app/node_modules node_modules
-COPY --from=builder /app/package.json .
-
-EXPOSE 3000
-
-CMD ["npm", "start"]
-```
-
-### 3.2 docker-compose.yml 확장
-
-프로덕션용 docker-compose (docker-compose.prod.yml):
+`.github/workflows/release.yml`:
 ```yaml
-version: "3.9"
+name: Release Build
 
-services:
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: ${DB_NAME:-deepmetria}
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    restart: always
+on:
+  push:
+    tags: ['v*.*.*']
 
-  redis:
-    image: redis:7
-    ports:
-      - "6379:6379"
-    restart: always
+jobs:
+  build:
+    runs-on: windows-latest
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    environment:
-      DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
-      REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY}
-      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID}
-      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
-      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    ports:
-      - "8000:8000"
-    restart: always
+    steps:
+      - uses: actions/checkout@v4
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-    ports:
-      - "3000:3000"
-    depends_on:
-      - backend
-    restart: always
+      - name: Setup vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+          C:\vcpkg\vcpkg integrate install
 
-volumes:
-  postgres_data:
+      - name: Install dependencies
+        run: |
+          C:\vcpkg\vcpkg install sqlite3:x64-windows
+          C:\vcpkg\vcpkg install "curl[openssl]:x64-windows"
+          C:\vcpkg\vcpkg install nlohmann-json:x64-windows
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Build Release
+        run: |
+          msbuild DeepMetria_MFC.sln `
+            /p:Configuration=Release `
+            /p:Platform=x64 `
+            /p:VcpkgEnabled=true `
+            /m
+
+      - name: Build Installer
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\setup.iss `
+            /DDM_VERSION=${{ steps.version.outputs.VERSION }}
+
+      - name: Sign Installer
+        if: secrets.CERT_PFX_BASE64 != ''
+        run: |
+          $cert = [Convert]::FromBase64String("${{ secrets.CERT_PFX_BASE64 }}")
+          [IO.File]::WriteAllBytes("cert.pfx", $cert)
+          signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
+            /f cert.pfx /p "${{ secrets.CERT_PASSWORD }}" `
+            "installer\Output\DeepMetria_Setup_${{ steps.version.outputs.VERSION }}.exe"
+        shell: powershell
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            installer/Output/DeepMetria_Setup_*.exe
+          generate_release_notes: true
 ```
 
-### 3.3 Docker로 배포
+### 4.2 PR 빌드 체크 (main 브랜치 보호)
 
-로컬에서 테스트:
-```bash
-docker-compose -f docker-compose.prod.yml up -d
+`.github/workflows/pr-check.yml`:
+```yaml
+name: PR Build Check
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build Debug
+        run: msbuild DeepMetria_MFC.sln /p:Configuration=Debug /p:Platform=x64 /m
 ```
 
-컨테이너 로그 확인:
-```bash
-docker-compose -f docker-compose.prod.yml logs -f backend
-docker-compose -f docker-compose.prod.yml logs -f frontend
+---
+
+## 5. 자동 업데이트 메커니즘
+
+### 5.1 업데이트 확인 흐름
+
+앱 시작 시 백그라운드 스레드에서 GitHub Releases API를 조회합니다:
+
+```
+GitHub API: GET https://api.github.com/repos/your-org/DeepMetria_MFC/releases/latest
+→ 응답의 tag_name 파싱 → 현재 버전과 비교 → 신버전이면 알림
 ```
 
-정지:
-```bash
-docker-compose -f docker-compose.prod.yml down
+### 5.2 AutoUpdater 클래스
+
+```cpp
+// src/updater/AutoUpdater.h
+class AutoUpdater {
+public:
+    static AutoUpdater& GetInstance();
+
+    // 백그라운드 업데이트 확인 (앱 시작 시 호출)
+    void CheckForUpdates(HWND hNotifyWnd);
+
+    // 업데이트 다운로드 및 실행
+    BOOL DownloadAndInstall(const CString& downloadUrl,
+                            const CString& version);
+
+private:
+    static UINT CheckThread(LPVOID pParam);
+    CString FetchLatestVersion();
+    BOOL    IsNewerVersion(const CString& remote, const CString& local);
+};
+
+// WM_DM_UPDATE_AVAILABLE: wParam=0, lParam=포인터(UpdateInfo*)
+#define WM_DM_UPDATE_AVAILABLE (WM_APP + 200)
+
+struct UpdateInfo {
+    CString version;
+    CString downloadUrl;
+    CString releaseNotes;
+};
 ```
 
-## 4. 프로덕션 배포 (Cloudflare/Vercel)
+### 5.3 업데이트 설치 흐름
 
-### 4.1 백엔드 배포 (Cloudflare Workers 또는 VPS)
+1. 사용자에게 업데이트 알림 다이얼로그 표시
+2. 사용자 확인 시 → 인스톨러 EXE 임시 폴더에 다운로드
+3. `ShellExecute`로 인스톨러 실행 (UAC 프롬프트 자동)
+4. 앱 자체 종료 (`PostQuitMessage(0)`)
+5. 인스톨러가 이전 버전 자동 덮어쓰기 (Inno Setup MajorUpgrade)
 
-#### Cloudflare Workers 선택사항
+---
 
-Workers에 FastAPI 배포는 제약이 있으므로, Cloudflare의 VPS 또는 다른 호스팅 제공자 권장.
+## 6. 배포 후 검증 및 롤백 절차
 
-#### VPS (Hetzner, Linode, DigitalOcean) 배포 단계
+### 6.1 배포 후 체크리스트
 
-1. VPS에 SSH 접속:
-```bash
-ssh root@your-server-ip
+- [ ] 인스톨러 정상 실행 확인 (관리자 권한 없이 설치 가능 여부)
+- [ ] 설치 경로 `%ProgramFiles%\DeepMetria\` 확인
+- [ ] 최초 실행 시 DB 파일 자동 생성 확인
+- [ ] API 키 입력 및 LLM 연결 테스트 통과
+- [ ] CSV 파일 로드 → 분석 → 시각화 생성 E2E 동작 확인
+- [ ] 코드서명 유효성 확인: `signtool verify /pa DeepMetria_MFC.exe`
+- [ ] Windows 이벤트 로그 오류 없음 확인
+
+### 6.2 롤백 절차
+
+#### 이전 버전 인스톨러로 롤백
+
+Inno Setup의 `MajorUpgrade` 설정 덕분에 이전 버전 인스톨러를 실행하면
+현재 버전을 자동으로 제거하고 이전 버전을 설치합니다.
+
+```powershell
+# GitHub Releases에서 이전 버전 인스톨러 다운로드 후 실행
+Start-Process "DeepMetria_Setup_0.9.0.exe" -Wait
 ```
 
-2. 필수 패키지 설치:
-```bash
-apt update && apt upgrade -y
-apt install -y python3.11 python3-pip docker.io docker-compose git curl
-```
-
-3. GitHub에서 저장소 복제:
-```bash
-cd /opt
-git clone https://github.com/your-org/DeepMetria.git
-cd DeepMetria
-```
-
-4. 환경 변수 설정:
-```bash
-cat > .env.prod <<EOF
-DB_NAME=deepmetria
-DB_USER=deepmetria_user
-DB_PASSWORD=$(openssl rand -base64 32)
-SECRET_KEY=$(openssl rand -base64 32)
-R2_ACCOUNT_ID=your-account-id
-R2_ACCESS_KEY_ID=your-key
-R2_SECRET_ACCESS_KEY=your-secret
-NEXT_PUBLIC_API_URL=https://api.yourdomain.com
-EOF
-```
-
-5. Docker로 시작:
-```bash
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-6. Nginx 리버스 프록시 설정 (선택사항):
-```nginx
-upstream backend {
-    server localhost:8000;
-}
-
-upstream frontend {
-    server localhost:3000;
-}
-
-server {
-    listen 80;
-    server_name api.yourdomain.com;
-
-    location / {
-        proxy_pass http://backend;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-
-server {
-    listen 80;
-    server_name yourdomain.com;
-
-    location / {
-        proxy_pass http://frontend;
-        proxy_set_header Host $host;
-    }
-}
-```
-
-7. SSL 인증서 설정 (Let's Encrypt):
-```bash
-apt install -y certbot python3-certbot-nginx
-certbot --nginx -d api.yourdomain.com -d yourdomain.com
-```
-
-### 4.2 프론트엔드 배포 (Vercel)
-
-#### Vercel 계정 연결
-
-1. Vercel CLI 설치:
-```bash
-npm install -g vercel
-```
-
-2. Vercel 로그인:
-```bash
-vercel login
-```
-
-3. 프론트엔드 배포:
-```bash
-cd frontend
-vercel --prod
-```
-
-#### 환경 변수 설정 (Vercel 대시보드)
-
-프로젝트 Settings → Environment Variables에서:
-```
-NEXT_PUBLIC_API_URL = https://api.yourdomain.com
-```
-
-#### 자동 배포 설정
-
-GitHub와 연결하면 main 브랜치 푸시 시 자동 배포.
-
-### 4.3 Cloudflare R2 스토리지 설정
-
-1. Cloudflare 대시보드에서 R2 생성
-2. API 토큰 생성: R2 API 토큰 (Account API Token)
-3. 환경 변수 설정:
-```bash
-export R2_ACCOUNT_ID=your-account-id
-export R2_ACCESS_KEY_ID=your-access-key
-export R2_SECRET_ACCESS_KEY=your-secret-key
-export R2_BUCKET_NAME=deepmetria
-```
-
-4. boto3로 접근 테스트:
-```python
-import boto3
-
-s3 = boto3.client(
-    's3',
-    endpoint_url='https://{account_id}.r2.cloudflarestorage.com',
-    aws_access_key_id='your-key',
-    aws_secret_access_key='your-secret'
-)
-
-response = s3.list_buckets()
-print(response)
-```
-
-## 5. DB 마이그레이션
-
-### 5.1 Alembic 마이그레이션 기본 흐름
-
-현재 상태 확인:
-```bash
-cd backend
-alembic current
-```
-
-최신 버전으로 업그레이드:
-```bash
-alembic upgrade head
-```
-
-특정 버전으로 다운그레이드:
-```bash
-alembic downgrade -1  # 한 버전 이전으로
-alembic downgrade base  # 초기 상태로
-```
-
-### 5.2 마이그레이션 히스토리 확인
+#### GitHub Releases 롤백
 
 ```bash
-alembic history
+# 잘못된 릴리즈 숨기기 (삭제 대신 draft로 전환)
+gh release edit v1.0.1 --draft
+
+# 이전 버전을 latest로 재지정
+gh release edit v1.0.0 --latest
 ```
 
-### 5.3 새 마이그레이션 생성
+### 6.3 롤백 시 DB 마이그레이션 고려사항
 
-모델 변경 후:
-```bash
-alembic revision --autogenerate -m "설명: 새로운 테이블 추가"
-alembic upgrade head
-```
+스키마 변경이 없으면 기존 DB 파일을 그대로 사용합니다.
+스키마 변경이 포함된 버전 롤백 시:
 
-생성된 파일 확인 및 검증:
-```bash
-cat alembic/versions/xxxxx_description.py
-```
-
-### 5.4 프로덕션 배포 중 마이그레이션
-
-1. 배포 전 로컬에서 테스트:
-```bash
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/test_db alembic upgrade head
-```
-
-2. 무중단 마이그레이션:
-```bash
-# 기존 서비스 운영 중
-docker-compose -f docker-compose.prod.yml exec backend alembic upgrade head
-
-# 새 버전 배포
-docker-compose -f docker-compose.prod.yml up -d --build backend
-```
-
-## 6. 모니터링 및 로깅
-
-### 6.1 로그 확인
-
-Docker 컨테이너 로그:
-```bash
-# 백엔드 로그
-docker-compose logs -f backend
-
-# 프론트엔드 로그
-docker-compose logs -f frontend
-
-# 데이터베이스 로그
-docker-compose logs -f postgres
-```
-
-### 6.2 헬스 체크
-
-백엔드 헬스 체크 엔드포인트:
-```bash
-curl http://localhost:8000/health
-```
-
-프론트엔드 헬스 체크:
-```bash
-curl http://localhost:3000
-```
-
-### 6.3 프로메테우스 메트릭 (선택사항)
-
-백엔드에 prometheus-client 추가:
-```bash
-pip install prometheus-client
-```
-
-main.py에 메트릭 추가:
-```python
-from prometheus_client import Counter, Histogram
-from fastapi import FastAPI
-from prometheus_fastapi_instrumentator import Instrumentator
-
-app = FastAPI()
-
-Instrumentator().instrument(app).expose(app)
-```
-
-### 6.4 기본 모니터링 체크리스트
-
-- 데이터베이스 연결 상태
-- Redis 연결 상태
-- CPU/메모리 사용률 (docker stats)
-- API 응답 시간
-- 에러 로그 (4xx, 5xx)
-
-## 7. 롤백 절차
-
-### 7.1 애플리케이션 롤백
-
-#### Git을 통한 롤백
-
-이전 커밋으로 되돌리기:
-```bash
-git log --oneline | head -20  # 커밋 히스토리 확인
-git revert <commit-hash>       # 특정 커밋 되돌리기
-git push origin main
-```
-
-또는 강제 롤백 (신중하게 사용):
-```bash
-git reset --hard <commit-hash>
-git push origin main --force
-```
-
-#### Docker 이미지 롤백
-
-이전 이미지 태그 사용:
-```bash
-# 빌드 시 태그 지정
-docker build -t deepmetria-backend:v1.0.0 ./backend
-docker build -t deepmetria-frontend:v1.0.0 ./frontend
-
-# 롤백 시 이전 태그로 실행
-docker-compose -f docker-compose.prod.yml down
-sed -i 's/latest/v1.0.0/g' docker-compose.prod.yml
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-### 7.2 데이터베이스 롤백
-
-마이그레이션 이전 버전으로 되돌리기:
-```bash
-cd backend
-
-# 현재 상태 확인
-alembic current
-
-# 이전 버전으로 다운그레이드
-alembic downgrade -1
-
-# 또는 특정 버전으로
-alembic downgrade <revision>
-```
-
-백업에서 복구:
-```bash
-# PostgreSQL 백업 복구
-pg_restore -U postgres -d deepmetria /path/to/backup.dump
-```
-
-### 7.3 프론트엔드 롤백 (Vercel)
-
-Vercel 대시보드:
-1. Deployments 탭에서 이전 배포 선택
-2. "Promote to Production" 클릭
-
-CLI를 통한 롤백:
-```bash
-vercel rollback
-```
-
-### 7.4 롤백 체크리스트
-
-- [ ] 변경 사항 백업 (데이터베이스, 코드, 설정)
-- [ ] 롤백 대상 버전 확인
-- [ ] 로컬에서 테스트
-- [ ] 프로덕션 배포 직전 최종 확인
-- [ ] 롤백 후 헬스 체크 수행
-- [ ] 데이터 무결성 검증
-- [ ] 팀에 공지
+1. `%APPDATA%\DeepMetria\deepmetria.db` 백업 (`deepmetria.db.bak`)
+2. 이전 버전 실행 → 자동으로 이전 스키마로 재초기화
+3. 데이터 보존이 필요한 경우 수동 마이그레이션 스크립트 적용

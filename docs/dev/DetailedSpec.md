@@ -1,625 +1,623 @@
-# DeepMetria DetailedSpec — LLM 기반 데이터 분석 SaaS 플랫폼 상세 설계
+# DeepMetria DetailedSpec — LLM 기반 데이터 분석 MFC C++ 데스크톱 앱 상세 설계
 
 ## 목차
-1. API 엔드포인트 설계 .......................................... L17
-2. DB 스키마 설계 ................................................ L292
-3. 컴포넌트 설계 (프론트엔드) ................................... L470
-4. AI 오케스트레이션 상세 ....................................... L627
-5. 파일 업로드/처리 파이프라인 .................................. L781
-6. 대시보드 레이아웃 시스템 ..................................... L851
-7. 시각화 서식 편집 모델 ........................................ L916
-8. 에러 핸들링 전략 ............................................. L965
-9. 상태 관리 설계 ............................................... L1036
+1. 클래스 메서드 인터페이스 설계 ................................ L17
+2. 데이터 모델 설계 (SQLite) ..................................... L267
+3. MFC 다이얼로그/뷰 클래스 설계 ................................ L433
+4. AI 오케스트레이션 상세 ....................................... L625
+5. 파일 업로드/처리 파이프라인 .................................. L774
+6. 대시보드 레이아웃 시스템 ..................................... L844
+7. 시각화 서식 편집 모델 ........................................ L899
+8. 에러 핸들링 전략 ............................................. L955
+9. 상태 관리 설계 ............................................... L1044
 
 
 ---
 
-## 1. API 엔드포인트 설계
+## 1. 클래스 메서드 인터페이스 설계
 
 ### 1.1 기본 규칙
 
-- Base URL: `https://api.deepmetria.com/api/v1`
-- 인증: `Authorization: Bearer <JWT>` 헤더 필수 (공개 엔드포인트 제외)
-- 응답 형식: JSON (SSE 스트리밍 엔드포인트 제외)
-- 오류 응답 공통 형식:
-  ```json
-  { "error": { "code": "ERROR_CODE", "message": "사용자 친화적 메시지", "detail": "..." } }
+- 모든 비즈니스 로직은 C++ 클래스 메서드로 구현
+- 인증: Windows 로컬 라이선스 키 기반 (`LicenseManager` 클래스)
+- 데이터 교환 형식: 내부 C++ 구조체 (`struct`) 및 `std::vector`
+- 오류 반환 공통 형식:
+  ```cpp
+  struct AppError {
+      CString code;       // 오류 코드 (예: "FILE_TOO_LARGE")
+      CString message;    // 사용자 친화적 메시지
+      int     severity;   // 0=info, 1=warning, 2=error
+  };
   ```
 
-### 1.2 인증 (Auth)
+### 1.2 인증/라이선스 (LicenseManager)
 
-#### POST /auth/register
-- 설명: 신규 사용자 등록
-- 요청 본문:
-  ```json
-  { "email": "string", "password": "string", "name": "string" }
+#### LicenseManager::Register()
+- 설명: 신규 라이선스 키 등록 및 사용자 정보 저장
+- 시그니처:
+  ```cpp
+  BOOL LicenseManager::Register(
+      const CString& licenseKey,
+      const CString& userName,
+      AppError&       outError
+  );
   ```
-- 응답 `201`:
-  ```json
-  { "user": { "id": "uuid", "email": "string", "name": "string", "tier": "free" }, "access_token": "string", "refresh_token": "string" }
-  ```
-- 오류: `400 VALIDATION_ERROR`, `409 EMAIL_ALREADY_EXISTS`
+- 성공: `TRUE` 반환, 레지스트리에 라이선스 정보 저장
+- 실패: `FALSE` 반환, `outError` 설정 (`INVALID_LICENSE`, `ALREADY_REGISTERED`)
 
-#### POST /auth/login
-- 설명: 로그인, JWT 발급
-- 요청 본문:
-  ```json
-  { "email": "string", "password": "string" }
+#### LicenseManager::Activate()
+- 설명: 로컬 라이선스 키 검증 및 세션 활성화
+- 시그니처:
+  ```cpp
+  BOOL LicenseManager::Activate(
+      const CString& licenseKey,
+      AppError&       outError
+  );
   ```
-- 응답 `200`:
-  ```json
-  { "access_token": "string", "refresh_token": "string", "expires_in": 3600 }
-  ```
-- 오류: `401 INVALID_CREDENTIALS`
+- 성공: `TRUE`, `m_sessionToken` 내부 설정
+- 실패: `FALSE` (`INVALID_CREDENTIALS`, `LICENSE_EXPIRED`)
 
-#### POST /auth/refresh
-- 설명: Access Token 갱신
-- 요청 본문: `{ "refresh_token": "string" }`
-- 응답 `200`: `{ "access_token": "string", "expires_in": 3600 }`
-
-#### GET /auth/me
-- 설명: 현재 사용자 정보 조회
-- 응답 `200`:
-  ```json
-  { "id": "uuid", "email": "string", "name": "string", "tier": "free|pro|max", "usage": { "used": 0, "limit": 10 } }
+#### LicenseManager::RefreshSession()
+- 설명: 세션 토큰 갱신 (만료 1시간 전 자동 호출)
+- 시그니처:
+  ```cpp
+  BOOL LicenseManager::RefreshSession(AppError& outError);
   ```
 
-### 1.3 데이터소스 (DataSource)
-
-#### POST /datasources/upload
-- 설명: 파일 업로드 및 DataSource 생성
-- 요청: `multipart/form-data`
-  - `file`: 파일 바이너리 (CSV / .xlsx / .xls / JSON)
-  - `name`: 데이터소스 이름 (optional, 기본값: 파일명)
-- 응답 `202`:
-  ```json
-  { "datasource_id": "uuid", "status": "processing", "stream_url": "/api/v1/datasources/{id}/stream" }
+#### LicenseManager::GetCurrentUser()
+- 설명: 현재 활성 사용자 정보 조회
+- 시그니처:
+  ```cpp
+  UserInfo LicenseManager::GetCurrentUser() const;
+  // UserInfo: { CString id, name, tier("free|pro|max"), int usedCount, limitCount }
   ```
-- 오류: `400 UNSUPPORTED_FILE_TYPE`, `413 FILE_TOO_LARGE`, `422 PARSE_ERROR`
-- 제한: 최대 파일 크기 50MB
 
-#### GET /datasources
+### 1.3 데이터소스 (DataSourceManager)
+
+#### DataSourceManager::ImportFile()
+- 설명: 로컬 파일 가져오기 및 DataSource 생성
+- 시그니처:
+  ```cpp
+  BOOL DataSourceManager::ImportFile(
+      const CString&  filePath,       // 전체 경로
+      const CString&  name,           // 표시 이름 (빈 문자열 시 파일명 사용)
+      CString&        outDatasourceId,
+      AppError&       outError
+  );
+  ```
+- 성공: `TRUE`, `outDatasourceId` 설정 (SQLite INTEGER ID를 CString으로 변환)
+- 실패: `FALSE` (`UNSUPPORTED_FILE_TYPE`, `FILE_TOO_LARGE`, `PARSE_ERROR`)
+- 제한: 최대 파일 크기 50MB, 백그라운드 스레드(`AfxBeginThread`)로 처리
+
+#### DataSourceManager::GetList()
 - 설명: 사용자 DataSource 목록 조회
-- 쿼리 파라미터: `page=1&size=20`
-- 응답 `200`:
-  ```json
-  { "items": [{ "id": "uuid", "name": "string", "type": "csv|excel|json", "row_count": 0, "created_at": "ISO8601", "status": "ready|processing|error" }], "total": 0, "page": 1 }
+- 시그니처:
+  ```cpp
+  std::vector<DataSourceInfo> DataSourceManager::GetList(
+      int page = 1,
+      int pageSize = 20
+  );
+  // DataSourceInfo: { CString id, name, fileType, status, int rowCount, CTime createdAt }
   ```
 
-#### GET /datasources/{id}
+#### DataSourceManager::GetDetail()
 - 설명: DataSource 상세 조회 (스키마, 요약 포함)
-- 응답 `200`:
-  ```json
-  {
-    "id": "uuid", "name": "string", "status": "ready",
-    "schema": [{ "column": "string", "dtype": "string|int|float|datetime", "nullable": true }],
-    "summary": { "domain": "string", "row_count": 0, "column_count": 0, "statistics": {} }
-  }
+- 시그니처:
+  ```cpp
+  DataSourceDetail DataSourceManager::GetDetail(const CString& datasourceId);
+  // DataSourceDetail: { DataSourceInfo info, vector<ColumnSchema> schema, DataSummary summary }
   ```
 
-#### GET /datasources/{id}/stream
-- 설명: 업로드 후 요약 생성 진행 상태를 SSE로 수신
-- 응답: `text/event-stream`
-  ```
-  event: status
-  data: {"stage": "uploading|parsing|summarizing|done", "message": "string", "progress": 0.0}
-
-  event: summary_complete
-  data: {"summary": {...}, "dashboard_id": "uuid"}
-
-  event: error
-  data: {"code": "string", "message": "string"}
+#### DataSourceManager::GetImportProgress()
+- 설명: 가져오기 진행 상태 폴링 (MFC 타이머 기반)
+- 시그니처:
+  ```cpp
+  ImportProgress DataSourceManager::GetImportProgress(const CString& datasourceId);
+  // ImportProgress: { CString stage("importing|parsing|summarizing|done"), float progress, CString message }
   ```
 
-#### DELETE /datasources/{id}
+#### DataSourceManager::Remove()
 - 설명: DataSource 삭제 (연관 분석 결과, 시각화 포함)
-- 응답 `204`
-
-### 1.4 분석 (Analysis)
-
-#### POST /analysis/query
-- 설명: 자연어 질문으로 분석 요청
-- 요청 본문:
-  ```json
-  { "question": "월별 매출 추이 보여줘", "datasource_id": "uuid", "dashboard_id": "uuid" }
-  ```
-- 응답 `202`:
-  ```json
-  { "flow_id": "uuid", "status": "pending", "stream_url": "/api/v1/analysis/{flow_id}/stream" }
-  ```
-- 오류: `402 QUOTA_EXCEEDED`, `404 DATASOURCE_NOT_FOUND`, `422 EMPTY_QUESTION`
-
-#### GET /analysis/{flow_id}/stream
-- 설명: CoT 추론 단계 및 분석 결과를 SSE로 수신
-- 응답: `text/event-stream`
-  ```
-  event: cot_step
-  data: {"step": 1, "type": "column_analysis", "content": "sales, date 컬럼 필요"}
-
-  event: tool_call
-  data: {"tool": "timeseries.monthly_trend", "params": {"column": "sales", "date_column": "date"}}
-
-  event: tool_result
-  data: {"tool": "timeseries.monthly_trend", "result": {...}}
-
-  event: visualization_ready
-  data: {"visualization_id": "uuid", "type": "line", "config": {...}}
-
-  event: done
-  data: {"flow_id": "uuid", "status": "completed"}
-
-  event: error
-  data: {"code": "string", "message": "string"}
+- 시그니처:
+  ```cpp
+  BOOL DataSourceManager::Remove(const CString& datasourceId, AppError& outError);
   ```
 
-#### GET /analysis/{flow_id}
+### 1.4 분석 (AnalysisManager)
+
+#### AnalysisManager::RequestAnalysis()
+- 설명: 자연어 질문으로 분석 요청 (백그라운드 스레드)
+- 시그니처:
+  ```cpp
+  BOOL AnalysisManager::RequestAnalysis(
+      const CString& question,
+      const CString& datasourceId,
+      const CString& dashboardId,   // 빈 문자열 허용
+      CString&       outFlowId,
+      AppError&       outError
+  );
+  ```
+- 성공: `TRUE`, 백그라운드 스레드 시작, `WM_ANALYSIS_PROGRESS` 메시지로 진행 통보
+- 실패: `FALSE` (`QUOTA_EXCEEDED`, `DATASOURCE_NOT_FOUND`, `EMPTY_QUESTION`)
+
+#### AnalysisManager::GetFlowStatus()
 - 설명: 분석 플로우 상태 및 결과 조회
-- 응답 `200`:
-  ```json
-  { "id": "uuid", "status": "pending|running|completed|failed", "question": "string", "cot_steps": [], "visualization_ids": [] }
+- 시그니처:
+  ```cpp
+  AnalysisFlowInfo AnalysisManager::GetFlowStatus(const CString& flowId);
+  // AnalysisFlowInfo: { CString status, question, vector<CotStep> cotSteps, vector<CString> visualizationIds }
   ```
 
-### 1.5 대시보드 (Dashboard)
-
-#### GET /dashboards
-- 설명: 사용자 대시보드 목록
-- 응답 `200`: `{ "items": [{ "id": "uuid", "name": "string", "datasource_id": "uuid", "created_at": "ISO8601" }], "total": 0 }`
-
-#### POST /dashboards
-- 설명: 대시보드 생성
-- 요청 본문: `{ "name": "string", "datasource_id": "uuid" }`
-- 응답 `201`: `{ "id": "uuid", "name": "string", "layout": [] }`
-
-#### GET /dashboards/{id}
-- 설명: 대시보드 상세 (레이아웃 + 시각화 목록 포함)
-- 응답 `200`:
-  ```json
-  {
-    "id": "uuid", "name": "string",
-    "layout": [{ "i": "viz-uuid", "x": 0, "y": 0, "w": 6, "h": 4 }],
-    "visualizations": [{ "id": "uuid", "type": "line", "config": {}, "style": {} }]
-  }
+#### AnalysisManager::CancelFlow()
+- 설명: 진행 중인 분석 취소
+- 시그니처:
+  ```cpp
+  BOOL AnalysisManager::CancelFlow(const CString& flowId, AppError& outError);
   ```
 
-#### PATCH /dashboards/{id}
-- 설명: 대시보드 이름 또는 레이아웃 업데이트
-- 요청 본문: `{ "name": "string", "layout": [...] }`
-- 응답 `200`: 업데이트된 대시보드
+### 1.5 대시보드 (DashboardManager)
 
-#### DELETE /dashboards/{id}
-- 응답 `204`
-
-### 1.6 MCP 서버 (DeepMetria MCP Server)
-
-DeepMetria는 MCP 서버를 제공하여 Claude Desktop, Cursor 등 외부 AI 클라이언트가 연결할 수 있습니다.
-외부 AI 클라이언트는 아래 MCP 도구를 호출하여 DeepMetria의 기능을 사용합니다.
-
-| MCP 도구 이름 | 설명 | 입력 파라미터 | 반환 형식 |
-|--------------|------|-------------|----------|
-| `upload_datasource` | 파일 업로드 및 DataSource 생성 | `file_path`, `name?` | `{ datasource_id, status }` |
-| `list_datasources` | DataSource 목록 조회 | `page?`, `size?` | `{ items[], total }` |
-| `get_datasource` | DataSource 상세 조회 (스키마, 요약) | `datasource_id` | `{ id, schema[], summary }` |
-| `request_analysis` | 자연어 질문으로 분석 요청 | `question`, `datasource_id`, `dashboard_id?` | `{ flow_id, status }` |
-| `get_analysis_result` | 분석 결과 조회 | `flow_id` | `{ status, cot_steps[], visualization_ids[] }` |
-| `list_dashboards` | 대시보드 목록 조회 | — | `{ items[], total }` |
-| `get_dashboard` | 대시보드 상세 조회 (레이아웃 + 시각화) | `dashboard_id` | `{ id, name, layout[], visualizations[] }` |
-| `get_visualization` | 개별 시각화 조회 | `visualization_id` | `{ id, type, config, style }` |
-| `export_visualization` | 시각화 이미지 다운로드 URL 획득 | `visualization_id`, `format?` | `{ download_url }` |
-
-- MCP 서버는 내부적으로 동일한 REST API (`/api/v1`)를 호출합니다.
-- 인증: MCP 클라이언트 연결 시 API Key 또는 JWT를 설정 파일에 지정합니다.
-- MCP 서버 설정 예시 (`claude_desktop_config.json`):
-  ```json
-  {
-    "mcpServers": {
-      "deepmetria": {
-        "command": "uvx",
-        "args": ["deepmetria-mcp"],
-        "env": { "DEEPMETRIA_API_KEY": "your_api_key" }
-      }
-    }
-  }
+#### DashboardManager::GetList()
+- 시그니처:
+  ```cpp
+  std::vector<DashboardInfo> DashboardManager::GetList();
+  // DashboardInfo: { CString id, name, datasourceId, CTime createdAt }
   ```
 
-### 1.7 CLI 인터페이스
-
-`deepmetria` CLI는 터미널에서 DeepMetria 기능을 명령줄로 사용하는 인터페이스입니다.
-내부적으로 동일한 REST API (`/api/v1`)를 호출합니다.
-
-#### 인증 설정
-```bash
-deepmetria login                          # API Key 또는 이메일/비밀번호 입력, ~/.deepmetria/config에 저장
-deepmetria logout                         # 인증 정보 삭제
-deepmetria whoami                         # 현재 사용자 정보 출력
-```
-
-#### 데이터소스 관리
-```bash
-deepmetria upload <file>                  # 파일 업로드 (진행 상태 출력)
-deepmetria upload <file> --name "이름"    # 이름 지정 업로드
-deepmetria datasource list                # DataSource 목록 출력
-deepmetria datasource get <id>            # DataSource 상세 출력 (스키마 포함)
-deepmetria datasource delete <id>         # DataSource 삭제
-```
-
-#### 분석 요청
-```bash
-deepmetria analyze "<질문>" --datasource <id>             # 분석 요청 (결과 대기 후 출력)
-deepmetria analyze "<질문>" --datasource <id> --stream    # 분석 CoT 단계 실시간 출력
-deepmetria analyze "<질문>" --datasource <id> --dashboard <id>  # 특정 대시보드에 추가
-```
-
-#### 대시보드 관리
-```bash
-deepmetria dashboard list                 # 대시보드 목록 출력
-deepmetria dashboard get <id>             # 대시보드 상세 출력
-deepmetria dashboard create --name "이름" --datasource <id>  # 대시보드 생성
-deepmetria dashboard delete <id>          # 대시보드 삭제
-```
-
-#### 시각화 관리
-```bash
-deepmetria viz get <id>                   # 시각화 상세 출력
-deepmetria viz export <id> --output out.png  # 시각화 이미지 다운로드
-```
-
-### 1.8 시각화 (Visualization)
-
-#### GET /visualizations/{id}
-- 응답 `200`:
-  ```json
-  { "id": "uuid", "dashboard_id": "uuid", "type": "line|bar|pie|scatter|table|area|histogram", "config": { "title": "string", "data": [], "axes": {} }, "style": { "color_scheme": "default", "font_size": 14 }, "position": { "x": 0, "y": 0, "w": 6, "h": 4 } }
+#### DashboardManager::Create()
+- 시그니처:
+  ```cpp
+  BOOL DashboardManager::Create(
+      const CString& name,
+      const CString& datasourceId,
+      CString&       outDashboardId,
+      AppError&       outError
+  );
   ```
 
-#### PATCH /visualizations/{id}
+#### DashboardManager::GetDetail()
+- 시그니처:
+  ```cpp
+  DashboardDetail DashboardManager::GetDetail(const CString& dashboardId);
+  // DashboardDetail: { DashboardInfo info, vector<LayoutItem> layout, vector<VisualizationInfo> visualizations }
+  ```
+
+#### DashboardManager::UpdateLayout()
+- 설명: 레이아웃 저장 (드래그/리사이즈 완료 후 호출)
+- 시그니처:
+  ```cpp
+  BOOL DashboardManager::UpdateLayout(
+      const CString&              dashboardId,
+      const std::vector<LayoutItem>& layout,
+      AppError&                   outError
+  );
+  ```
+
+#### DashboardManager::Remove()
+- 시그니처:
+  ```cpp
+  BOOL DashboardManager::Remove(const CString& dashboardId, AppError& outError);
+  ```
+
+### 1.6 내부 분석 도구 디스패처 (AnalysisToolDispatcher)
+
+MFC 앱 내부에서 AI Agent가 호출하는 C++ 분석 함수 디스패처.
+
+| 도구 메서드 | 설명 | 입력 파라미터 | 반환 형식 |
+|------------|------|-------------|----------|
+| `DispatchBasicStats()` | 기본 통계 (평균, 중앙값, 표준편차, 결측치) | `datasourceId`, `columns` | `map<CString, StatsObj>` |
+| `DispatchDistribution()` | 컬럼 분포 분석 (히스토그램 데이터) | `datasourceId`, `column`, `bins=10` | `DistributionResult` |
+| `DispatchValueCounts()` | 카테고리 컬럼 빈도 집계 | `datasourceId`, `column`, `topN=10` | `vector<ValueCount>` |
+| `DispatchGroupBy()` | 그룹별 집계 | `datasourceId`, `groupCol`, `aggCol`, `func` | `vector<GroupResult>` |
+| `DispatchPivot()` | 피벗 테이블 생성 | `datasourceId`, `index`, `columns`, `values`, `aggfunc` | `PivotResult` |
+| `DispatchMonthlyTrend()` | 월별 시계열 집계 | `datasourceId`, `dateCol`, `valueCol`, `func` | `vector<TrendPoint>` |
+| `DispatchMovingAverage()` | 이동평균 계산 | `datasourceId`, `dateCol`, `valueCol`, `window=7` | `vector<MaPoint>` |
+| `DispatchYoYComparison()` | 전년 동기 비교 | `datasourceId`, `dateCol`, `valueCol` | `vector<YoYPoint>` |
+| `DispatchPearsonCorr()` | 피어슨 상관계수 행렬 | `datasourceId`, `columns` | `CorrMatrix` |
+| `DispatchTopCorrelated()` | 특정 컬럼과 상관 높은 컬럼 Top N | `datasourceId`, `targetCol`, `topN=5` | `vector<CorrPair>` |
+| `DispatchRecommendViz()` | 데이터 특성 기반 차트 유형 추천 | `datasourceId`, `question`, `columns` | `VizRecommendation` |
+| `DispatchFilterRows()` | 조건 기반 행 필터링 후 통계 | `datasourceId`, `conditions`, `aggCols` | `FilterResult` |
+| `DispatchTopNRows()` | 특정 컬럼 기준 상위 N행 | `datasourceId`, `sortCol`, `n=10`, `ascending=false` | `vector<RowData>` |
+
+### 1.7 시각화 (VisualizationManager)
+
+#### VisualizationManager::GetDetail()
+- 시그니처:
+  ```cpp
+  VisualizationInfo VisualizationManager::GetDetail(const CString& vizId);
+  // VisualizationInfo: {
+  //   CString id, dashboardId, vizType, title
+  //   ChartConfig chartConfig   // 차트 데이터 및 축 설정 (JSON 문자열)
+  //   ChartStyle  style         // 색상, 폰트 등 스타일
+  //   LayoutItem  position      // {x, y, w, h} 그리드 위치
+  // }
+  ```
+
+#### VisualizationManager::UpdateStyle()
 - 설명: 서식(위치, 크기, 스타일) 업데이트
-- 요청 본문:
-  ```json
-  { "position": { "x": 0, "y": 0, "w": 6, "h": 4 }, "style": { "color_scheme": "blue", "font_size": 14, "title": "string" } }
+- 시그니처:
+  ```cpp
+  BOOL VisualizationManager::UpdateStyle(
+      const CString&  vizId,
+      const LayoutItem& position,
+      const ChartStyle& style,
+      AppError&         outError
+  );
   ```
-- 응답 `200`: 업데이트된 Visualization
 
-#### DELETE /visualizations/{id}
-- 응답 `204`
+#### VisualizationManager::Remove()
+- 시그니처:
+  ```cpp
+  BOOL VisualizationManager::Remove(const CString& vizId, AppError& outError);
+  ```
 
-#### GET /visualizations/{id}/export
-- 설명: 시각화 이미지 다운로드
-- 쿼리 파라미터: `format=png` (기본값)
-- 응답: `image/png` 바이너리 또는 `{ "download_url": "presigned_url" }`
+#### VisualizationManager::ExportToFile()
+- 설명: 시각화를 이미지 파일로 내보내기
+- 시그니처:
+  ```cpp
+  BOOL VisualizationManager::ExportToFile(
+      const CString& vizId,
+      const CString& outputPath,  // 로컬 파일 경로 (.png / .bmp)
+      AppError&       outError
+  );
+  ```
 
 ---
 
-## 2. DB 스키마 설계
+## 2. 데이터 모델 설계 (SQLite)
 
 ### 2.1 설계 원칙
 
-- PostgreSQL 사용, SQLAlchemy 2.0 (async) ORM
-- UUID v4를 PK로 사용 (예측 불가능성, 분산 환경 대응)
-- `created_at`, `updated_at` 모든 테이블에 공통 포함
-- 소프트 삭제(`deleted_at`)는 user, dashboard 테이블에만 적용
-- 멀티테넌트 격리: 모든 데이터 테이블에 `user_id` 포함 + RLS 정책 검토
+- SQLite 3 사용, C++ SQLite wrapper (`SQLiteDB` 클래스) 기반
+- INTEGER PRIMARY KEY AUTOINCREMENT를 PK로 사용 (로컬 단일 사용자)
+- `created_at`, `updated_at` 모든 테이블에 공통 포함 (UNIX timestamp INTEGER)
+- 소프트 삭제(`deleted_at`)는 datasource, dashboard 테이블에만 적용
+- 사용자 격리: 단일 사용자 앱이므로 `user_id` 생략, 라이선스 정보는 레지스트리 관리
 
 ### 2.2 테이블 정의
 
-#### users
+#### users (라이선스 정보)
 ```sql
-CREATE TABLE users (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email       VARCHAR(255) UNIQUE NOT NULL,
-    name        VARCHAR(100) NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    tier        VARCHAR(20) NOT NULL DEFAULT 'free'   -- free | pro | max
-                CHECK (tier IN ('free', 'pro', 'max')),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at  TIMESTAMPTZ
+CREATE TABLE IF NOT EXISTS users (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    license_key  TEXT UNIQUE NOT NULL,
+    name         TEXT NOT NULL,
+    tier         TEXT NOT NULL DEFAULT 'free'   -- free | pro | max
+                 CHECK (tier IN ('free', 'pro', 'max')),
+    created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
-CREATE INDEX idx_users_email ON users(email) WHERE deleted_at IS NULL;
 ```
 
 #### usage_quotas
 ```sql
-CREATE TABLE usage_quotas (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    period      DATE NOT NULL,                         -- YYYY-MM-01 (월별 집계)
+CREATE TABLE IF NOT EXISTS usage_quotas (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    period      TEXT NOT NULL,                   -- 'YYYY-MM' (월별 집계)
     used        INTEGER NOT NULL DEFAULT 0,
-    limit_count INTEGER NOT NULL DEFAULT 10,           -- 티어별 한도
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(user_id, period)
+    limit_count INTEGER NOT NULL DEFAULT 10,     -- 티어별 한도
+    created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    UNIQUE(period)
 );
-CREATE INDEX idx_usage_quotas_user_period ON usage_quotas(user_id, period);
+CREATE INDEX IF NOT EXISTS idx_usage_quotas_period ON usage_quotas(period);
 ```
 
 #### datasources
 ```sql
-CREATE TABLE datasources (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name         VARCHAR(255) NOT NULL,
-    file_type    VARCHAR(20) NOT NULL CHECK (file_type IN ('csv', 'excel', 'json')),
-    storage_key  VARCHAR(512) NOT NULL,                -- R2/S3 오브젝트 키
-    file_size    BIGINT NOT NULL,
-    row_count    INTEGER,
-    column_count INTEGER,
-    status       VARCHAR(20) NOT NULL DEFAULT 'processing'
-                 CHECK (status IN ('processing', 'ready', 'error')),
+CREATE TABLE IF NOT EXISTS datasources (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT NOT NULL,
+    file_type     TEXT NOT NULL CHECK (file_type IN ('csv', 'excel', 'json')),
+    local_path    TEXT NOT NULL,                 -- 로컬 파일시스템 경로
+    file_size     INTEGER NOT NULL,
+    row_count     INTEGER,
+    column_count  INTEGER,
+    status        TEXT NOT NULL DEFAULT 'processing'
+                  CHECK (status IN ('processing', 'ready', 'error')),
     error_message TEXT,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    updated_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    deleted_at    INTEGER
 );
-CREATE INDEX idx_datasources_user_id ON datasources(user_id);
-CREATE INDEX idx_datasources_status ON datasources(status);
+CREATE INDEX IF NOT EXISTS idx_datasources_status ON datasources(status);
 ```
 
 #### data_schemas
 ```sql
-CREATE TABLE data_schemas (
-    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    datasource_id  UUID NOT NULL REFERENCES datasources(id) ON DELETE CASCADE,
-    column_name    VARCHAR(255) NOT NULL,
+CREATE TABLE IF NOT EXISTS data_schemas (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    datasource_id  INTEGER NOT NULL REFERENCES datasources(id) ON DELETE CASCADE,
+    column_name    TEXT NOT NULL,
     column_index   INTEGER NOT NULL,
-    dtype          VARCHAR(50) NOT NULL,               -- string | int | float | datetime | boolean
-    nullable       BOOLEAN NOT NULL DEFAULT TRUE,
-    sample_values  JSONB,                              -- 대표 샘플 값 최대 5개
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    dtype          TEXT NOT NULL,               -- string | int | float | datetime | boolean
+    nullable       INTEGER NOT NULL DEFAULT 1,  -- SQLite BOOLEAN (0/1)
+    sample_values  TEXT,                        -- JSON 문자열 (최대 5개 샘플)
+    created_at     INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
-CREATE INDEX idx_data_schemas_datasource ON data_schemas(datasource_id);
+CREATE INDEX IF NOT EXISTS idx_data_schemas_datasource ON data_schemas(datasource_id);
 ```
 
 #### data_summaries
 ```sql
-CREATE TABLE data_summaries (
-    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    datasource_id  UUID NOT NULL UNIQUE REFERENCES datasources(id) ON DELETE CASCADE,
-    domain         VARCHAR(255),                       -- AI 추정 도메인 (예: "영업 데이터")
-    description    TEXT,                               -- AI 생성 요약 텍스트
-    statistics     JSONB NOT NULL DEFAULT '{}',        -- 컬럼별 통계 (min, max, mean, nulls 등)
+CREATE TABLE IF NOT EXISTS data_summaries (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    datasource_id  INTEGER NOT NULL UNIQUE REFERENCES datasources(id) ON DELETE CASCADE,
+    domain         TEXT,                         -- AI 추정 도메인 (예: "영업 데이터")
+    description    TEXT,                         -- AI 생성 요약 텍스트
+    statistics     TEXT NOT NULL DEFAULT '{}',  -- JSON 문자열: 컬럼별 통계
     row_count      INTEGER NOT NULL DEFAULT 0,
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at     INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    updated_at     INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
 ```
 
 #### dashboards
 ```sql
-CREATE TABLE dashboards (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    datasource_id UUID NOT NULL REFERENCES datasources(id),
-    name          VARCHAR(255) NOT NULL,
-    layout        JSONB NOT NULL DEFAULT '[]',          -- react-grid-layout GridItem[]
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at    TIMESTAMPTZ
+CREATE TABLE IF NOT EXISTS dashboards (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    datasource_id INTEGER NOT NULL REFERENCES datasources(id),
+    name          TEXT NOT NULL,
+    layout        TEXT NOT NULL DEFAULT '[]',   -- JSON 문자열: LayoutItem[]
+    created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    updated_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    deleted_at    INTEGER
 );
-CREATE INDEX idx_dashboards_user_id ON dashboards(user_id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_dashboards_datasource ON dashboards(datasource_id);
+CREATE INDEX IF NOT EXISTS idx_dashboards_datasource ON dashboards(datasource_id);
 ```
 
 #### visualizations
 ```sql
-CREATE TABLE visualizations (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    dashboard_id UUID NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
-    user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    flow_id      UUID,                                 -- 생성한 AnalysisFlow (nullable: 자동 요약 생성분)
-    viz_type     VARCHAR(50) NOT NULL                  -- line | bar | pie | scatter | table | area | histogram | donut
+CREATE TABLE IF NOT EXISTS visualizations (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    dashboard_id INTEGER NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
+    flow_id      INTEGER,                        -- 생성한 AnalysisFlow (NULL 허용)
+    viz_type     TEXT NOT NULL                   -- line | bar | pie | scatter | table | area | histogram | donut | hbar
                  CHECK (viz_type IN ('line','bar','pie','scatter','table','area','histogram','donut','hbar')),
-    title        VARCHAR(255),
-    chart_config JSONB NOT NULL DEFAULT '{}',          -- 차트 데이터 및 축 설정
-    style        JSONB NOT NULL DEFAULT '{}',          -- 색상, 폰트 등 스타일
-    position     JSONB NOT NULL DEFAULT '{}',          -- {x, y, w, h} grid 위치
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    title        TEXT,
+    chart_config TEXT NOT NULL DEFAULT '{}',    -- JSON 문자열: 차트 데이터 및 축 설정
+    style        TEXT NOT NULL DEFAULT '{}',    -- JSON 문자열: 색상, 폰트 등 스타일
+    position     TEXT NOT NULL DEFAULT '{}',    -- JSON 문자열: {x, y, w, h}
+    created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    updated_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
-CREATE INDEX idx_visualizations_dashboard ON visualizations(dashboard_id);
-CREATE INDEX idx_visualizations_user ON visualizations(user_id);
+CREATE INDEX IF NOT EXISTS idx_visualizations_dashboard ON visualizations(dashboard_id);
 ```
 
 #### analysis_flows
 ```sql
-CREATE TABLE analysis_flows (
-    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    datasource_id  UUID NOT NULL REFERENCES datasources(id),
-    dashboard_id   UUID REFERENCES dashboards(id),
+CREATE TABLE IF NOT EXISTS analysis_flows (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    datasource_id  INTEGER NOT NULL REFERENCES datasources(id),
+    dashboard_id   INTEGER REFERENCES dashboards(id),
     question       TEXT NOT NULL,
-    status         VARCHAR(20) NOT NULL DEFAULT 'pending'
+    status         TEXT NOT NULL DEFAULT 'pending'
                    CHECK (status IN ('pending', 'running', 'completed', 'failed')),
-    llm_provider   VARCHAR(50),                        -- 사용된 LLM 제공자
-    llm_model      VARCHAR(100),
-    cot_steps      JSONB NOT NULL DEFAULT '[]',        -- CoT 추론 단계 로그
-    tool_calls     JSONB NOT NULL DEFAULT '[]',        -- 내부 분석 도구 호출 기록
+    llm_provider   TEXT,                         -- 사용된 LLM 제공자
+    llm_model      TEXT,
+    cot_steps      TEXT NOT NULL DEFAULT '[]',  -- JSON 문자열: CoT 추론 단계 로그
+    tool_calls     TEXT NOT NULL DEFAULT '[]',  -- JSON 문자열: 내부 분석 도구 호출 기록
     error_message  TEXT,
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at     INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    updated_at     INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
-CREATE INDEX idx_analysis_flows_user ON analysis_flows(user_id);
-CREATE INDEX idx_analysis_flows_datasource ON analysis_flows(datasource_id);
-CREATE INDEX idx_analysis_flows_status ON analysis_flows(status);
+CREATE INDEX IF NOT EXISTS idx_analysis_flows_datasource ON analysis_flows(datasource_id);
+CREATE INDEX IF NOT EXISTS idx_analysis_flows_status ON analysis_flows(status);
 ```
 
 ### 2.3 관계 다이어그램 (요약)
 
 ```
-users (1) ──< usage_quotas (N)
-users (1) ──< datasources (N)
+users (라이선스 정보) ── usage_quotas (월별 쿼터)
 datasources (1) ──< data_schemas (N)
 datasources (1) ── data_summaries (1)
-users (1) ──< dashboards (N)
 datasources (1) ──< dashboards (N)
 dashboards (1) ──< visualizations (N)
-users (1) ──< analysis_flows (N)
 datasources (1) ──< analysis_flows (N)
 analysis_flows (1) ──< visualizations (N)
 ```
 
-### 2.4 Redis 캐시 키 규칙
+### 2.4 인메모리 캐시 규칙 (std::map 기반)
 
-| 키 패턴 | 값 | TTL | 용도 |
-|---------|---|-----|------|
-| `quota:{user_id}:{YYYY-MM}` | `{"used": N, "limit": M}` | 1시간 | 사용량 빠른 조회 |
-| `datasource:schema:{id}` | JSON 스키마 배열 | 1일 | 스키마 반복 조회 캐시 |
-| `session:{token_hash}` | `{"user_id": "uuid"}` | 1시간 | JWT 블랙리스트/세션 관리 |
-| `analysis:lock:{datasource_id}:{user_id}` | `1` | 5분 | 동시 분석 요청 제한 |
+| 캐시 키 패턴 | 값 타입 | TTL | 용도 |
+|-------------|---------|-----|------|
+| `quota:{YYYY-MM}` | `QuotaInfo` | 1시간 | 사용량 빠른 조회 |
+| `schema:{datasource_id}` | `vector<ColumnSchema>` | 앱 세션 내 영구 | 스키마 반복 조회 캐시 |
+| `analysis:lock:{datasource_id}` | `bool` | 5분 | 동시 분석 요청 제한 |
+
+- 캐시는 `CacheManager` 싱글턴에서 `std::map<CString, CacheEntry>` 구조로 관리
+- TTL 만료 체크: `CacheManager::Cleanup()` — WM_TIMER 60초 간격 호출
 
 ---
 
-## 3. 컴포넌트 설계 (프론트엔드)
+## 3. MFC 다이얼로그/뷰 클래스 설계
 
-### 3.1 페이지 구조 (Next.js App Router)
-
-```
-src/app/
-├── (auth)/
-│   ├── login/page.tsx           — 로그인 화면
-│   └── register/page.tsx        — 회원가입 화면
-├── (main)/
-│   ├── layout.tsx               — 인증 가드 + 사이드바 레이아웃
-│   ├── page.tsx                 — 홈 (데이터소스 목록)
-│   ├── upload/page.tsx          — 파일 업로드 화면
-│   └── dashboard/
-│       ├── page.tsx             — 대시보드 목록
-│       └── [dashboardId]/
-│           └── page.tsx         — 개별 대시보드 화면
-└── api/                         — Next.js Route Handlers (프록시 최소화)
-```
-
-### 3.2 컴포넌트 트리
-
-#### 대시보드 화면 (`/dashboard/[dashboardId]`)
+### 3.1 애플리케이션 구조 (MFC SDI)
 
 ```
-DashboardPage
-├── DashboardHeader
-│   ├── DashboardTitle (인라인 편집)
-│   └── DashboardActions (다운로드 버튼, 설정)
-├── QueryPanel
-│   ├── QueryInput            — 자연어 질문 입력 (textarea + 전송 버튼)
-│   └── CotProgressPanel      — CoT 추론 단계 실시간 표시
-│       └── CotStepItem[]     — 단계별 추론 텍스트 (애니메이션)
-├── DashboardCanvas           — react-grid-layout 래퍼
-│   └── VisualizationCard[]   — 개별 시각화 카드
-│       ├── CardHeader        (제목, 편집/삭제 액션)
-│       ├── ChartRenderer     — viz_type에 따라 Recharts 컴포넌트 선택
-│       │   ├── LineChartView
-│       │   ├── BarChartView
-│       │   ├── PieChartView
-│       │   ├── ScatterChartView
-│       │   ├── AreaChartView
-│       │   ├── HistogramView
-│       │   └── DataTableView — 표 시각화 (shadcn/ui Table)
-│       └── CardFooter        (다운로드 버튼)
-└── StyleEditorPanel          — 우측 슬라이드인 패널 (선택된 카드 편집)
-    ├── TitleEditor
-    ├── ColorSchemeSelector
-    ├── FontSizeControl
-    └── SizePositionControls  (수동 W/H 입력)
+CDeepMetriaApp (CWinApp)
+├── CMainFrame (CFrameWnd)
+│   ├── CMenuBar                    — 상단 메뉴 (파일/분석/대시보드/도움말)
+│   ├── CToolBar                    — 도구 모음 (가져오기, 분석, 내보내기)
+│   └── CSplitterWnd (좌/우 분할)
+│       ├── [좌] CNavigatorView     — 데이터소스/대시보드 탐색 트리뷰
+│       └── [우] CTabView           — 탭 기반 콘텐츠 영역
+│           ├── CDashboardView      — 개별 대시보드 뷰
+│           └── CDataSourceView     — 데이터소스 상세 뷰
+└── 다이얼로그
+    ├── CActivationDlg              — 라이선스 키 등록/활성화
+    ├── CImportFileDlg              — 파일 가져오기 (진행 상태 포함)
+    ├── CQueryInputDlg              — 자연어 질문 입력
+    ├── CStyleEditorDlg             — 시각화 서식 편집
+    └── CAboutDlg                   — 앱 정보
 ```
 
-#### 업로드 화면 (`/upload`)
+### 3.2 뷰 클래스 트리
+
+#### CDashboardView (CView 파생)
 
 ```
-UploadPage
-├── FileDropzone              — react-dropzone 기반 드래그앤드롭
-│   ├── DropArea              (파일 선택 또는 드래그)
-│   └── FilePreview           (선택된 파일 이름, 크기)
-├── UploadProgressPanel       — SSE 연결 후 진행 상태 표시
-│   ├── ProgressBar
-│   └── StatusMessage         (단계별 메시지)
-└── DataSummaryPreview        — 요약 완료 후 스키마 / 통계 미리보기
-    ├── SchemaTable
-    └── StatisticsCards
+CDashboardView
+├── CDashboardHeader (CStatic 영역)
+│   ├── CEdit m_titleEdit           — 대시보드 제목 인라인 편집
+│   └── CButton m_exportBtn         — 내보내기 버튼
+├── CQueryPanel (CDialogBar)
+│   ├── CEdit m_questionEdit        — 자연어 질문 입력 (멀티라인)
+│   ├── CButton m_submitBtn         — 분석 요청 버튼
+│   └── CCotProgressList (CListCtrl) — CoT 추론 단계 실시간 표시
+│       └── CCotStepItem[]          — 단계별 추론 텍스트 (텍스트 애니메이션)
+├── CDashboardCanvas (CScrollView 파생)  — 가상 캔버스 (드래그/리사이즈 지원)
+│   └── CVisualizationCard[]        — 개별 시각화 카드 (CWnd 파생)
+│       ├── CCardHeader             — 제목 표시줄 (드래그 핸들)
+│       ├── CChartRenderer          — viz_type에 따라 GDI+ 차트 렌더링
+│       │   ├── CLineChartView
+│       │   ├── CBarChartView
+│       │   ├── CPieChartView
+│       │   ├── CScatterChartView
+│       │   ├── CAreaChartView
+│       │   ├── CHistogramView
+│       │   └── CDataGridView       — 표 시각화 (CListCtrl 확장)
+│       └── CCardFooter             — 내보내기 버튼
+└── CStyleEditorPanel (CDialogBar)  — 우측 도킹 패널 (선택된 카드 편집)
+    ├── CEdit m_titleEdit
+    ├── CComboBox m_colorSchemeCombo
+    ├── CSpinButtonCtrl m_fontSizeSpin
+    └── CEdit m_widthEdit, m_heightEdit
 ```
 
-### 3.3 컴포넌트 Props 인터페이스
+#### CImportFileDlg (CDialog 파생)
 
-#### VisualizationCard
-
-```typescript
-interface VisualizationCardProps {
-  visualization: Visualization;
-  isSelected: boolean;
-  onSelect: (id: string) => void;
-  onDelete: (id: string) => void;
-  onExport: (id: string) => void;
-}
+```
+CImportFileDlg
+├── CEdit m_filePathEdit            — 선택된 파일 경로 표시
+├── CButton m_browseBtn             — 파일 선택 (CFileDialog 호출)
+├── CProgressCtrl m_progressBar     — 가져오기 진행 상태
+├── CStatic m_statusMsg             — 단계별 메시지 표시
+└── CListCtrl m_schemaPreview       — 요약 완료 후 스키마 미리보기
 ```
 
-#### ChartRenderer
+#### CActivationDlg (CDialog 파생)
 
-```typescript
-interface ChartRendererProps {
-  type: VizType;           // 'line' | 'bar' | 'pie' | 'scatter' | 'table' | 'area' | 'histogram' | 'donut' | 'hbar'
-  config: ChartConfig;     // 차트 데이터 및 축 설정
-  style: ChartStyle;       // 색상, 폰트
-  width?: number;          // 픽셀 (반응형 시 생략)
-  height?: number;
-}
+```
+CActivationDlg
+├── CEdit m_licenseKeyEdit          — 라이선스 키 입력
+├── CEdit m_userNameEdit            — 사용자 이름 입력
+├── CButton m_activateBtn           — 활성화 버튼
+└── CStatic m_statusMsg             — 활성화 결과 메시지
 ```
 
-#### QueryInput
+### 3.3 클래스 주요 멤버 및 메시지 맵
 
-```typescript
-interface QueryInputProps {
-  datasourceId: string;
-  dashboardId: string;
-  onSubmit: (question: string) => void;
-  isLoading: boolean;
-  disabled?: boolean;        // 쿼터 초과 시
-}
+#### CVisualizationCard
+
+```cpp
+class CVisualizationCard : public CWnd {
+public:
+    VisualizationInfo  m_vizInfo;    // 현재 시각화 데이터
+    BOOL               m_bSelected; // 선택 상태
+    CPoint             m_ptDragStart;
+    CSize              m_szResize;
+
+    // 메시지 핸들러
+    afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
+    afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
+    afx_msg void OnMouseMove(UINT nFlags, CPoint point);
+    afx_msg void OnPaint();
+    afx_msg void OnContextMenu(CWnd* pWnd, CPoint point);
+
+    // 메서드
+    void SetVisualization(const VisualizationInfo& info);
+    void RenderChart(CDC* pDC);
+    void ExportToClipboard();
+};
 ```
 
-#### DashboardCanvas
+#### CDashboardCanvas
 
-```typescript
-interface DashboardCanvasProps {
-  layout: GridLayout.Layout[];
-  visualizations: Visualization[];
-  onLayoutChange: (layout: GridLayout.Layout[]) => void;
-  onVisualizationSelect: (id: string) => void;
-  selectedId: string | null;
-}
+```cpp
+class CDashboardCanvas : public CScrollView {
+public:
+    std::vector<CVisualizationCard*> m_cards;
+    DashboardDetail                  m_detail;
+    CString                          m_selectedCardId;
+
+    // 메시지 핸들러
+    afx_msg LRESULT OnAnalysisProgress(WPARAM wParam, LPARAM lParam);
+    afx_msg LRESULT OnVisualizationReady(WPARAM wParam, LPARAM lParam);
+    afx_msg LRESULT OnImportProgress(WPARAM wParam, LPARAM lParam);
+
+    // 메서드
+    void LoadDashboard(const CString& dashboardId);
+    void AddCard(const VisualizationInfo& vizInfo);
+    void RemoveCard(const CString& vizId);
+    void SaveLayout();              // debounce 500ms 후 DashboardManager::UpdateLayout() 호출
+    void SelectCard(const CString& vizId);
+};
 ```
 
-### 3.4 공통 타입 정의
+#### CQueryInputDlg
 
-```typescript
-// types/index.ts
+```cpp
+class CQueryInputDlg : public CDialog {
+public:
+    CString  m_datasourceId;
+    CString  m_dashboardId;
+    BOOL     m_bLoading;
+    BOOL     m_bDisabled;          // 쿼터 초과 시 TRUE
 
-type VizType = 'line' | 'bar' | 'pie' | 'scatter' | 'table' | 'area' | 'histogram' | 'donut' | 'hbar';
+    // 메서드
+    void OnBnClickedSubmit();
+    void SetLoading(BOOL bLoading);
+    void SetQuotaExceeded(BOOL bExceeded);
+    void AppendCotStep(const CotStep& step);
+};
+```
 
-interface ChartConfig {
-  data: Record<string, unknown>[];
-  xKey?: string;
-  yKey?: string | string[];
-  labelKey?: string;
-  valueKey?: string;
-  columns?: { key: string; label: string }[];   // DataTable용
-}
+### 3.4 공통 C++ 구조체 정의
 
-interface ChartStyle {
-  color_scheme: 'default' | 'blue' | 'green' | 'warm' | 'mono';
-  font_size: number;         // 기본 14
-  show_legend: boolean;
-  show_grid: boolean;
-}
+```cpp
+// DeepMetriaTypes.h
 
-interface Visualization {
-  id: string;
-  dashboard_id: string;
-  viz_type: VizType;
-  title?: string;
-  chart_config: ChartConfig;
-  style: ChartStyle;
-  position: { x: number; y: number; w: number; h: number };
-}
+enum class VizType {
+    Line, Bar, HBar, Pie, Donut, Scatter, Area, Histogram, Table
+};
 
-interface GridItem extends ReactGridLayout.Layout {
-  i: string;   // visualization.id
-}
+struct ChartConfig {
+    CString              data;      // JSON 문자열 (배열)
+    CString              xKey;
+    CString              yKey;      // 쉼표 구분 다중 키 허용
+    CString              labelKey;
+    CString              valueKey;
+};
+
+struct ChartStyle {
+    CString colorScheme;            // "default" | "blue" | "green" | "warm" | "mono"
+    int     fontSize = 14;
+    BOOL    showLegend = TRUE;
+    BOOL    showGrid = TRUE;
+};
+
+struct LayoutItem {
+    CString id;                     // visualization id
+    int x = 0, y = 0;
+    int w = 6, h = 4;
+    int minW = 3, minH = 2;
+};
+
+struct VisualizationInfo {
+    CString     id;
+    CString     dashboardId;
+    VizType     vizType;
+    CString     title;
+    ChartConfig chartConfig;
+    ChartStyle  style;
+    LayoutItem  position;
+};
+
+struct GridItem {
+    CString id;                     // visualization.id
+    int x, y, w, h;
+};
 ```
 
 ---
@@ -628,24 +626,24 @@ interface GridItem extends ReactGridLayout.Layout {
 
 ### 4.1 내부 분석 도구 목록
 
-AI Agent가 내부적으로 사용하는 pandas 기반 분석 함수 전체 목록.
-이 도구들은 사용자 인터페이스(MCP 서버/CLI/브라우저)와 무관하게 Agent가 직접 호출하는 내부 함수입니다.
+AI Agent가 내부적으로 사용하는 C++ 기반 분석 함수 전체 목록.
+이 함수들은 MFC UI와 무관하게 `AnalysisToolDispatcher`가 직접 호출하는 내부 메서드입니다.
 
 | 도구 이름 | 설명 | 입력 파라미터 | 반환 형식 |
 |-----------|------|-------------|----------|
-| `statistics.basic_stats` | 기본 통계 (평균, 중앙값, 표준편차, 결측치) | `datasource_id`, `columns[]` | `{column: stats_obj}` |
-| `statistics.distribution` | 컬럼 분포 분석 (히스토그램 데이터) | `datasource_id`, `column`, `bins=10` | `{bins: [], counts: []}` |
-| `statistics.value_counts` | 카테고리 컬럼 빈도 집계 | `datasource_id`, `column`, `top_n=10` | `[{value, count, pct}]` |
-| `aggregation.group_by` | 그룹별 집계 (합계, 평균 등) | `datasource_id`, `group_col`, `agg_col`, `func=sum` | `[{group, value}]` |
-| `aggregation.pivot` | 피벗 테이블 생성 | `datasource_id`, `index`, `columns`, `values`, `aggfunc` | `{index: [], columns: [], data: [[]]}` |
-| `timeseries.monthly_trend` | 월별 시계열 집계 | `datasource_id`, `date_col`, `value_col`, `func=sum` | `[{month, value}]` |
-| `timeseries.moving_average` | 이동평균 계산 | `datasource_id`, `date_col`, `value_col`, `window=7` | `[{date, value, ma}]` |
-| `timeseries.yoy_comparison` | 전년 동기 비교 | `datasource_id`, `date_col`, `value_col` | `[{period, current, previous, growth_rate}]` |
-| `correlation.pearson` | 피어슨 상관계수 행렬 | `datasource_id`, `columns[]` | `{matrix: [[]], labels: []}` |
-| `correlation.top_correlated` | 특정 컬럼과 상관 높은 컬럼 Top N | `datasource_id`, `target_col`, `top_n=5` | `[{column, r_value}]` |
-| `visualization.recommend` | 데이터 특성 기반 차트 유형 추천 | `datasource_id`, `question`, `columns[]` | `{recommended: VizType, reason: string, alternatives: []}` |
-| `data.filter_rows` | 조건 기반 행 필터링 후 통계 | `datasource_id`, `conditions[]`, `agg_cols[]` | 필터링된 집계 결과 |
-| `data.top_n_rows` | 특정 컬럼 기준 상위 N행 | `datasource_id`, `sort_col`, `n=10`, `ascending=false` | `[{...row}]` |
+| `statistics.basic_stats` | 기본 통계 (평균, 중앙값, 표준편차, 결측치) | `datasourceId`, `columns[]` | `map<CString, StatsObj>` |
+| `statistics.distribution` | 컬럼 분포 분석 (히스토그램 데이터) | `datasourceId`, `column`, `bins=10` | `DistributionResult` |
+| `statistics.value_counts` | 카테고리 컬럼 빈도 집계 | `datasourceId`, `column`, `topN=10` | `vector<ValueCount>` |
+| `aggregation.group_by` | 그룹별 집계 (합계, 평균 등) | `datasourceId`, `groupCol`, `aggCol`, `func=sum` | `vector<GroupResult>` |
+| `aggregation.pivot` | 피벗 테이블 생성 | `datasourceId`, `index`, `columns`, `values`, `aggfunc` | `PivotResult` |
+| `timeseries.monthly_trend` | 월별 시계열 집계 | `datasourceId`, `dateCol`, `valueCol`, `func=sum` | `vector<TrendPoint>` |
+| `timeseries.moving_average` | 이동평균 계산 | `datasourceId`, `dateCol`, `valueCol`, `window=7` | `vector<MaPoint>` |
+| `timeseries.yoy_comparison` | 전년 동기 비교 | `datasourceId`, `dateCol`, `valueCol` | `vector<YoYPoint>` |
+| `correlation.pearson` | 피어슨 상관계수 행렬 | `datasourceId`, `columns[]` | `CorrMatrix` |
+| `correlation.top_correlated` | 특정 컬럼과 상관 높은 컬럼 Top N | `datasourceId`, `targetCol`, `topN=5` | `vector<CorrPair>` |
+| `visualization.recommend` | 데이터 특성 기반 차트 유형 추천 | `datasourceId`, `question`, `columns[]` | `VizRecommendation` |
+| `data.filter_rows` | 조건 기반 행 필터링 후 통계 | `datasourceId`, `conditions[]`, `aggCols[]` | `FilterResult` |
+| `data.top_n_rows` | 특정 컬럼 기준 상위 N행 | `datasourceId`, `sortCol`, `n=10`, `ascending=false` | `vector<RowData>` |
 
 ### 4.2 Chain of Thinking (CoT) 흐름
 
@@ -656,7 +654,7 @@ Step 1 — 질문 분석 (Column Identification)
   <thinking>
   질문에서 언급된 측정 지표와 차원을 식별한다.
   - "월별 매출 추이" → date 컬럼(차원), sales 컬럼(지표) 필요
-  - 스키마에서 매핑: date_col="order_date", value_col="revenue"
+  - 스키마에서 매핑: dateCol="order_date", valueCol="revenue"
   </thinking>
 
 Step 2 — 도구 선택 (Tool Selection)
@@ -664,26 +662,27 @@ Step 2 — 도구 선택 (Tool Selection)
   분석 목적에 맞는 도구를 선택한다.
   - "추이" → timeseries 계열 도구
   - 월별 집계 → timeseries.monthly_trend
-  - 이동평균 추가 여부 → 질문에 없으면 생략
-  선택: timeseries.monthly_trend(datasource_id, date_col="order_date", value_col="revenue")
+  선택: DispatchMonthlyTrend(datasourceId, "order_date", "revenue")
   </thinking>
 
 Step 3 — 차트 유형 결정 (Chart Selection)
   <thinking>
   시간 + 수치 조합 → line 차트 또는 area 차트
   "추이"는 라인 차트가 적합
-  선택: viz_type = "line"
+  선택: vizType = VizType::Line
   </thinking>
 
 Step 4 — 도구 호출 (Internal Tool Call)
-  → Agent가 내부 분석 함수를 직접 호출
-  → pandas 기반 계산 수행
-  → 결과 JSON 수신
+  → AnalysisToolDispatcher가 C++ 분석 함수를 직접 호출
+  → CSV/SQLite 데이터 기반 계산 수행
+  → 결과 구조체 수신
+  → WM_COT_STEP 메시지로 UI에 단계별 결과 통보
 
 Step 5 — 결과 조합 (Result Assembly)
-  → chart_config 구성 (data, xKey, yKey)
-  → Visualization 엔티티 생성
-  → 대시보드에 추가
+  → ChartConfig 구성 (data JSON, xKey, yKey)
+  → VisualizationInfo 구조체 생성
+  → SQLite visualizations 테이블 저장
+  → WM_VISUALIZATION_READY 메시지로 CDashboardCanvas에 통보
 ```
 
 ### 4.3 시스템 프롬프트 (Orchestrator)
@@ -713,104 +712,97 @@ Step 5 — 결과 조합 (Result Assembly)
 - 불분명한 경우 가장 일반적인 해석을 선택합니다.
 ```
 
-### 4.4 LLM Router 설계
+### 4.4 LLM 클라이언트 설계 (CLlmClient)
 
-```python
-# infrastructure/llm/router.py
+```cpp
+// LlmClient.h
 
-class LLMRouter:
-    PROVIDERS = {
-        "claude": "anthropic/claude-3-5-sonnet-20241022",
-        "gpt4o": "openai/gpt-4o",
-        "gemini": "google/gemini-1.5-pro",
-    }
+class CLlmClient {
+public:
+    enum Provider { Claude, Gpt4o, Gemini };
 
-    async def chat_with_tools(
-        self,
-        messages: list[dict],
-        tools: list[dict],           # 내부 분석 도구 스키마
-        provider: str = "claude",
-    ) -> LLMResponse:
-        model = self.PROVIDERS[provider]
-        response = await litellm.acompletion(
-            model=model,
-            messages=messages,
-            tools=tools,
-            tool_choice="auto",
-            stream=False,
-        )
-        return LLMResponse(
-            content=response.choices[0].message.content,
-            tool_calls=response.choices[0].message.tool_calls or [],
-        )
+    struct LLMResponse {
+        CString           content;
+        vector<ToolCall>  toolCalls;  // AI가 선택한 내부 도구 호출 목록
+    };
 
-    async def stream_chat(
-        self,
-        messages: list[dict],
-        provider: str = "claude",
-    ) -> AsyncGenerator[str, None]:
-        """CoT 추론 텍스트 스트리밍"""
-        async for chunk in await litellm.acompletion(
-            model=self.PROVIDERS[provider],
-            messages=messages,
-            stream=True,
-        ):
-            if chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+    // 동기 호출 (백그라운드 스레드에서 실행)
+    BOOL ChatWithTools(
+        const vector<ChatMessage>& messages,
+        const vector<ToolSchema>&  tools,
+        Provider                   provider,
+        LLMResponse&               outResponse,
+        AppError&                  outError
+    );
+
+    // 스트리밍 호출: CoT 텍스트를 청크 단위로 콜백
+    // pfnCallback: void(const CString& chunk, LPVOID pContext)
+    BOOL StreamChat(
+        const vector<ChatMessage>& messages,
+        Provider                   provider,
+        PFNSTREAMCALLBACK          pfnCallback,
+        LPVOID                     pContext,
+        AppError&                  outError
+    );
+
+private:
+    static const CString ENDPOINTS[];  // LLM API 엔드포인트
+    CString              m_apiKey;     // 라이선스 서버에서 발급
+    WinHTTP 기반 HTTP 클라이언트;
+};
 ```
 
 ### 4.5 데이터 요약 (Summarizer) 흐름
 
 ```
-파일 업로드 완료
+파일 가져오기 완료 (로컬 파일시스템)
     ↓
-1. pandas로 파일 파싱 → DataFrame
+1. C++ 파서로 파일 파싱 → 인메모리 데이터 테이블
 2. data_schemas 테이블에 컬럼 메타데이터 저장
-3. basic_stats() 내부 분석 함수 호출 → 기본 통계 수집
-4. LLM에게 스키마 + 샘플 데이터 전달 → 도메인 추정 + 설명 텍스트 생성
+3. DispatchBasicStats() 호출 → 기본 통계 수집
+4. CLlmClient::ChatWithTools() — 스키마 + 샘플 데이터 전달 → 도메인 추정 + 설명 텍스트 생성
 5. data_summaries 테이블 저장
 6. 기본 대시보드 생성 (요약 카드 2-3개 자동 배치)
-    - 전체 행/컬럼 수 카드
-    - 주요 수치 컬럼 기본 통계 테이블
-    - 도메인 설명 텍스트 카드
-7. SSE: summary_complete 이벤트 전송
+   - 전체 행/컬럼 수 카드 (CDataGridView)
+   - 주요 수치 컬럼 기본 통계 테이블 (CDataGridView)
+   - 도메인 설명 텍스트 카드 (CVisualizationCard + CStatic)
+7. WM_IMPORT_COMPLETE 메시지 → CDashboardCanvas에 통보
 ```
 
 ---
 
 ## 5. 파일 업로드/처리 파이프라인
 
-### 5.1 업로드 처리 흐름
+### 5.1 파일 가져오기 처리 흐름
 
 ```
-클라이언트 → POST /api/v1/datasources/upload (multipart)
+사용자 → CImportFileDlg → CFileDialog 파일 선택
     ↓
-[FastAPI] 파일 수신 (최대 50MB)
-    ↓ 검증
+[메인 스레드] DataSourceManager::ImportFile() 호출
+    ↓ 검증 (동기)
 - 파일 확장자 확인: .csv | .xlsx | .xls | .json
-- Content-Type 확인 (MIME sniffing 방어)
-- 파일 크기 확인 (50MB 초과 → 413)
+- 파일 크기 확인 (50MB 초과 → AppError)
     ↓
-[BackgroundTask] 비동기 처리 시작
+[AfxBeginThread] 백그라운드 처리 시작
     ↓
-1. R2/S3에 원본 파일 업로드
-   - 키: uploads/{user_id}/{datasource_id}/{filename}
-   - 파일은 user_id 기반 prefix로 격리
+1. 로컬 앱 데이터 디렉토리에 파일 복사
+   - 경로: %APPDATA%\DeepMetria\datasources\{datasource_id}\{filename}
+   - 원본 파일은 사용자 선택 위치 유지
     ↓
-2. DataSource 레코드 생성 (status=processing)
+2. DataSource 레코드 생성 (status='processing')
     ↓
-3. SSE 스트림 시작 응답 반환 (202)
+3. WM_IMPORT_PROGRESS 메시지 → CImportFileDlg에 진행 상태 통보 (stage="importing")
     ↓
-[Background Worker]
-4. 파일 파싱 (pandas)
-   - CSV: pd.read_csv() — 인코딩 자동 감지 (chardet)
-   - Excel: pd.read_excel() — openpyxl 엔진
-   - JSON: pd.read_json() — orient 자동 감지
+[Background Thread]
+4. 파일 파싱 (C++ 파서)
+   - CSV: libcsv 또는 자체 구현 CSVParser — UTF-8, EUC-KR 자동 감지
+   - Excel: libxlsxwriter / xlsLib 기반 파서
+   - JSON: RapidJSON 기반 파서
     ↓
 5. 스키마 추출 → data_schemas 저장
 6. AI Summarizer 실행 (4.5 참조)
-7. DataSource status=ready 업데이트
-8. SSE: summary_complete 이벤트
+7. DataSource status='ready' 업데이트
+8. WM_IMPORT_COMPLETE 메시지 → 메인 윈도우에 통보
 ```
 
 ### 5.2 지원 파일 형식 및 제약
@@ -818,77 +810,68 @@ class LLMRouter:
 | 형식 | 확장자 | 최대 크기 | 최대 행 수 | 인코딩 |
 |------|--------|---------|----------|------|
 | CSV | .csv | 50MB | 100만 행 | UTF-8, EUC-KR 자동 감지 |
-| Excel | .xlsx, .xls | 50MB | 100만 행 | N/A (openpyxl 처리) |
+| Excel | .xlsx, .xls | 50MB | 100만 행 | N/A (라이브러리 처리) |
 | JSON | .json | 50MB | 100만 행 | UTF-8 |
 
 - 멀티시트 Excel: 첫 번째 시트만 처리 (MVP)
 - 헤더 없는 CSV: 자동으로 col_0, col_1... 컬럼명 부여
 
-### 5.3 스토리지 구조 (Cloudflare R2)
+### 5.3 로컬 파일시스템 저장 구조
 
 ```
-버킷: deepmetria-uploads
-  └── uploads/
-      └── {user_id}/
-          └── {datasource_id}/
-              └── {original_filename}   — 원본 파일 (영구 보관)
+%APPDATA%\DeepMetria\
+  └── datasources\
+      └── {datasource_id}\
+          └── {original_filename}   — 복사된 원본 파일 (영구 보관)
+  └── exports\
+      └── {viz_id}_{timestamp}.png  — 내보낸 시각화 이미지
+  └── deepmetria.db                 — SQLite 데이터베이스
 ```
 
-- presigned URL TTL: 1시간 (다운로드 전용)
-- 파일 삭제: DataSource 삭제 시 R2 파일도 동기 삭제 (BackgroundTask)
+- 파일 삭제: DataSource 삭제 시 해당 디렉토리도 동기 삭제 (`SHFileOperation`)
 
 ### 5.4 파싱 오류 처리
 
 | 오류 유형 | 처리 방식 | 사용자 메시지 |
 |---------|---------|------------|
-| 인코딩 오류 | chardet로 재시도, 실패 시 에러 | "파일 인코딩을 인식할 수 없습니다" |
+| 인코딩 오류 | 다른 인코딩으로 재시도, 실패 시 에러 | "파일 인코딩을 인식할 수 없습니다" |
 | 빈 파일 | 즉시 오류 반환 | "파일에 데이터가 없습니다" |
 | 헤더만 있는 파일 | 스키마는 생성, 통계 생략 | "데이터 행이 없습니다 (헤더만 존재)" |
-| 파싱 중 예외 | status=error, 메시지 저장 | "파일을 처리하는 중 오류가 발생했습니다" |
+| 파싱 중 예외 | status='error', 메시지 SQLite 저장 | "파일을 처리하는 중 오류가 발생했습니다" |
 
 ---
 
 ## 6. 대시보드 레이아웃 시스템
 
-### 6.1 react-grid-layout 설정
+### 6.1 CDashboardCanvas 레이아웃 설정
 
-```typescript
-// components/dashboard/DashboardCanvas.tsx
+```cpp
+// DashboardCanvas.h
 
-const GRID_COLS = 12;           // 12열 그리드
-const ROW_HEIGHT = 80;          // 1 단위 = 80px
-const DEFAULT_VIZ_W = 6;        // 기본 너비 (12열 중 6 = 50%)
-const DEFAULT_VIZ_H = 4;        // 기본 높이 (4 * 80 = 320px)
-const MIN_VIZ_W = 3;            // 최소 너비
-const MIN_VIZ_H = 2;            // 최소 높이
-const MARGIN: [number, number] = [12, 12];  // 카드 간격 (px)
+const int GRID_COLS    = 12;   // 12열 그리드
+const int ROW_HEIGHT   = 80;   // 1단위 = 80px
+const int DEFAULT_VIZ_W = 6;   // 기본 너비 (12열 중 6 = 50%)
+const int DEFAULT_VIZ_H = 4;   // 기본 높이 (4 * 80 = 320px)
+const int MIN_VIZ_W    = 3;    // 최소 너비
+const int MIN_VIZ_H    = 2;    // 최소 높이
+const int CARD_MARGIN  = 12;   // 카드 간격 (px)
 
-<ResponsiveGridLayout
-  className="layout"
-  layouts={layouts}
-  breakpoints={{ lg: 1200, md: 996, sm: 768 }}
-  cols={{ lg: 12, md: 10, sm: 6 }}
-  rowHeight={ROW_HEIGHT}
-  margin={MARGIN}
-  onLayoutChange={handleLayoutChange}
-  draggableHandle=".drag-handle"
-  resizeHandles={['se', 's', 'e']}
-  isDraggable={true}
-  isResizable={true}
->
-  {visualizations.map(viz => (
-    <div key={viz.id} data-grid={{ ...viz.position, minW: MIN_VIZ_W, minH: MIN_VIZ_H }}>
-      <VisualizationCard visualization={viz} />
-    </div>
-  ))}
-</ResponsiveGridLayout>
+// 레이아웃 계산
+CRect CDashboardCanvas::GridToPixel(const LayoutItem& item) {
+    int cellW = (m_clientWidth - CARD_MARGIN) / GRID_COLS;
+    int x = item.x * cellW + CARD_MARGIN;
+    int y = item.y * ROW_HEIGHT + CARD_MARGIN;
+    int w = item.w * cellW - CARD_MARGIN;
+    int h = item.h * ROW_HEIGHT - CARD_MARGIN;
+    return CRect(x, y, x + w, y + h);
+}
 ```
 
 ### 6.2 레이아웃 저장 전략
 
-- **Optimistic Update**: 드래그/리사이즈 완료 시 즉시 로컬 상태 반영
-- **Debounce 저장**: 500ms debounce 후 `PATCH /dashboards/{id}` 호출 (빈번한 저장 방지)
-- **충돌 방지**: 저장 요청 중 추가 변경 발생 시 마지막 상태만 저장
+- **즉시 반영**: 드래그/리사이즈 완료 시 즉시 로컬 `m_layout` 벡터 업데이트
+- **Debounce 저장**: 500ms 타이머(`SetTimer`) 후 `DashboardManager::UpdateLayout()` 호출 (빈번한 DB 쓰기 방지)
+- **충돌 방지**: 저장 중 추가 변경 발생 시 마지막 상태만 저장 (타이머 리셋)
 
 ### 6.3 기본 레이아웃 (데이터 요약 후 자동 생성)
 
@@ -899,15 +882,15 @@ Row 0-1:  [요약 텍스트 카드 (w=12, h=2)]
 Row 2-5:  [기본 통계 테이블 (w=6, h=4)] | [컬럼 스키마 테이블 (w=6, h=4)]
 ```
 
-- 자동 배치 좌표는 `visualization.recommend` 도구 결과와 무관하게 고정 구성
+- 자동 배치 좌표는 `DispatchRecommendViz()` 결과와 무관하게 고정 구성
 
-### 6.4 레이아웃 데이터 저장 형식 (dashboards.layout JSONB)
+### 6.4 레이아웃 데이터 저장 형식 (dashboards.layout TEXT/JSON)
 
 ```json
 [
-  { "i": "viz-uuid-1", "x": 0, "y": 0, "w": 12, "h": 2, "minW": 3, "minH": 2 },
-  { "i": "viz-uuid-2", "x": 0, "y": 2, "w": 6,  "h": 4, "minW": 3, "minH": 2 },
-  { "i": "viz-uuid-3", "x": 6, "y": 2, "w": 6,  "h": 4, "minW": 3, "minH": 2 }
+  { "i": "1", "x": 0, "y": 0, "w": 12, "h": 2, "minW": 3, "minH": 2 },
+  { "i": "2", "x": 0, "y": 2, "w": 6,  "h": 4, "minW": 3, "minH": 2 },
+  { "i": "3", "x": 6, "y": 2, "w": 6,  "h": 4, "minW": 3, "minH": 2 }
 ]
 ```
 
@@ -919,46 +902,53 @@ Row 2-5:  [기본 통계 테이블 (w=6, h=4)] | [컬럼 스키마 테이블 (w=
 
 | 속성 그룹 | 속성 | 타입 | 기본값 | 설명 |
 |---------|------|------|-------|------|
-| 제목 | `title` | string | AI 생성 제목 | 시각화 카드 헤더 제목 |
-| 색상 | `color_scheme` | enum | `default` | default / blue / green / warm / mono |
-| 폰트 | `font_size` | number | 14 | 레이블/범례 폰트 크기 (px) |
-| 범례 | `show_legend` | boolean | true | 범례 표시 여부 |
-| 그리드 | `show_grid` | boolean | true | 차트 배경 그리드 여부 |
-| 크기/위치 | `position.w`, `position.h` | number | 6, 4 | react-grid-layout 그리드 단위 |
+| 제목 | `title` | CString | AI 생성 제목 | 시각화 카드 헤더 제목 |
+| 색상 | `colorScheme` | enum | `default` | default / blue / green / warm / mono |
+| 폰트 | `fontSize` | int | 14 | 레이블/범례 폰트 크기 (pt) |
+| 범례 | `showLegend` | BOOL | TRUE | 범례 표시 여부 |
+| 그리드 | `showGrid` | BOOL | TRUE | 차트 배경 그리드 여부 |
+| 크기/위치 | `position.w`, `position.h` | int | 6, 4 | 그리드 단위 (CDashboardCanvas 기준) |
 
 ### 7.2 색상 스킴 정의
 
-```typescript
-const COLOR_SCHEMES: Record<string, string[]> = {
-  default: ['#6366f1', '#22d3ee', '#f97316', '#a3e635', '#f43f5e'],
-  blue:    ['#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe', '#dbeafe'],
-  green:   ['#22c55e', '#4ade80', '#86efac', '#bbf7d0', '#dcfce7'],
-  warm:    ['#f97316', '#fb923c', '#fbbf24', '#fde047', '#fef08a'],
-  mono:    ['#1e293b', '#475569', '#94a3b8', '#cbd5e1', '#e2e8f0'],
+```cpp
+// ChartRenderer.cpp
+
+static const COLORREF COLOR_SCHEMES[][5] = {
+    // default
+    { RGB(99,102,241), RGB(34,211,238), RGB(249,115,22), RGB(163,230,53), RGB(244,63,94) },
+    // blue
+    { RGB(59,130,246), RGB(96,165,250), RGB(147,197,253), RGB(191,219,254), RGB(219,234,254) },
+    // green
+    { RGB(34,197,94),  RGB(74,222,128), RGB(134,239,172), RGB(187,247,208), RGB(220,252,231) },
+    // warm
+    { RGB(249,115,22), RGB(251,146,60), RGB(251,191,36),  RGB(253,224,71),  RGB(254,240,138) },
+    // mono
+    { RGB(30,41,59),   RGB(71,85,105),  RGB(148,163,184), RGB(203,213,225), RGB(226,232,240) },
 };
 ```
 
-### 7.3 StyleEditor 동작 방식
+### 7.3 CStyleEditorPanel 동작 방식
 
-1. 사용자가 VisualizationCard를 클릭 → `selectedId` 상태 업데이트
-2. 우측 StyleEditorPanel 슬라이드인
-3. 편집 시 즉시 로컬 상태(Zustand) 업데이트 → 차트 실시간 리렌더
-4. 패널 닫기 또는 3초 idle 시 `PATCH /visualizations/{id}` 저장
-5. 저장 실패 시 이전 상태로 롤백 + Toast 오류 알림
+1. 사용자가 CVisualizationCard를 클릭 → `CDashboardCanvas::SelectCard()` 호출
+2. CStyleEditorPanel (도킹 패널) 활성화, 선택된 카드 정보 로드
+3. 편집 시 즉시 `m_vizInfo.style` 업데이트 → `CVisualizationCard::Invalidate()` 호출 → 실시간 리렌더
+4. 패널 닫기 또는 3초 idle 타이머 만료 시 `VisualizationManager::UpdateStyle()` 호출 (SQLite 저장)
+5. 저장 실패 시 이전 상태로 롤백 + `AfxMessageBox()` 오류 알림
 
-### 7.4 Recharts 컴포넌트 매핑
+### 7.4 GDI+ 차트 렌더링 매핑
 
-| viz_type | Recharts 컴포넌트 | 특이사항 |
-|---------|-----------------|---------|
-| `line` | `<LineChart>` | 다중 Y축 지원 |
-| `bar` | `<BarChart>` | stacked 옵션 |
-| `hbar` | `<BarChart layout="vertical">` | 수평 바 |
-| `area` | `<AreaChart>` | fillOpacity 0.3 |
-| `pie` | `<PieChart>` | — |
-| `donut` | `<PieChart>` | `innerRadius` 설정 |
-| `scatter` | `<ScatterChart>` | — |
-| `histogram` | `<BarChart>` | 커스텀 데이터 전처리 |
-| `table` | `<Table>` (shadcn/ui) | 정렬, 페이지네이션 지원 |
+| vizType | 렌더러 클래스 | 특이사항 |
+|---------|-------------|---------|
+| `Line` | `CLineChartView` | 다중 Y계열 지원 |
+| `Bar` | `CBarChartView` | stacked 옵션, 수직 바 |
+| `HBar` | `CBarChartView` (수평 모드) | 수평 바 |
+| `Area` | `CAreaChartView` | fillOpacity 0.3 (AlphaBlend) |
+| `Pie` | `CPieChartView` | GDI+ Pie 섹터 |
+| `Donut` | `CPieChartView` (innerRadius 설정) | 내부 원 마스크 |
+| `Scatter` | `CScatterChartView` | 점 크기 옵션 |
+| `Histogram` | `CBarChartView` (bin 전처리 포함) | 커스텀 데이터 전처리 |
+| `Table` | `CDataGridView` | CListCtrl 확장, 정렬/페이지네이션 |
 
 ---
 
@@ -968,48 +958,60 @@ const COLOR_SCHEMES: Record<string, string[]> = {
 
 | 레이어 | 에러 유형 | 처리 방식 |
 |------|---------|---------|
-| 프론트엔드 | 네트워크 오류 | Toast 알림 + 재시도 버튼 |
-| 프론트엔드 | SSE 연결 끊김 | 자동 재연결 (최대 3회, exponential backoff) |
-| 백엔드 API | 검증 오류 (422) | 필드별 에러 메시지 폼에 표시 |
-| 백엔드 API | 인증 오류 (401) | 로그인 페이지로 리다이렉트 |
-| 백엔드 API | 쿼터 초과 (402) | 업그레이드 안내 모달 표시 |
-| 백엔드 API | 서버 오류 (500) | 일반 오류 Toast + 에러 코드 표시 |
-| LLM API | Timeout / Rate Limit | AnalysisFlow status=failed + SSE error 이벤트 |
-| 파일 처리 | 파싱 오류 | DataSource status=error + 상세 메시지 |
+| UI (MFC) | 잘못된 입력 | 인라인 메시지 (`CStatic` 색상 변경) |
+| UI (MFC) | 분석 진행 중 취소 | `AnalysisManager::CancelFlow()` + 스레드 종료 이벤트 |
+| 비즈니스 로직 | 검증 오류 | `AppError` 반환 → `AfxMessageBox()` 또는 인라인 표시 |
+| 비즈니스 로직 | 인증 오류 | `CActivationDlg` 재표시 |
+| 비즈니스 로직 | 쿼터 초과 | 업그레이드 안내 `CDialog` 표시 |
+| 비즈니스 로직 | 내부 처리 오류 | `AppError` 반환 + SQLite status='error' 저장 |
+| LLM API | Timeout / Rate Limit | `AnalysisFlow` status='failed' + WM_ANALYSIS_ERROR 메시지 |
+| 파일 처리 | 파싱 오류 | `DataSource` status='error' + 상세 메시지 SQLite 저장 |
 | 내부 분석 도구 | 함수 실행 오류 | CoT 재시도 1회 → 실패 시 flow 실패 처리 |
 
-### 8.2 백엔드 공통 예외 처리
+### 8.2 공통 예외 처리 클래스
 
-```python
-# api/middleware/error_handler.py
+```cpp
+// AppException.h
 
-class AppException(Exception):
-    def __init__(self, code: str, message: str, status_code: int = 400):
-        self.code = code
-        self.message = message
-        self.status_code = status_code
+struct AppError {
+    CString code;
+    CString message;
+    int     severity;  // 0=info, 1=warning, 2=error
+};
 
-# 공통 예외 타입
-class ValidationError(AppException): ...         # 422
-class NotFoundError(AppException): ...           # 404
-class UnauthorizedError(AppException): ...       # 401
-class QuotaExceededError(AppException): ...      # 402
-class LLMProviderError(AppException): ...        # 502
-class FileProcessingError(AppException): ...     # 422
+// 공통 오류 코드 상수
+namespace ErrorCode {
+    constexpr LPCSTR VALIDATION_ERROR       = "VALIDATION_ERROR";
+    constexpr LPCSTR NOT_FOUND              = "NOT_FOUND";
+    constexpr LPCSTR UNAUTHORIZED           = "UNAUTHORIZED";
+    constexpr LPCSTR QUOTA_EXCEEDED         = "QUOTA_EXCEEDED";
+    constexpr LPCSTR LLM_PROVIDER_ERROR     = "LLM_PROVIDER_ERROR";
+    constexpr LPCSTR FILE_PROCESSING_ERROR  = "FILE_PROCESSING_ERROR";
+    constexpr LPCSTR INVALID_LICENSE        = "INVALID_LICENSE";
+    constexpr LPCSTR LICENSE_EXPIRED        = "LICENSE_EXPIRED";
+}
 
-@app.exception_handler(AppException)
-async def app_exception_handler(request, exc: AppException):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"error": {"code": exc.code, "message": exc.message}},
-    )
+// 공통 에러 핸들러 헬퍼
+void ShowErrorDialog(CWnd* pParent, const AppError& error);
+void LogError(const AppError& error, const CString& context);
 ```
 
-### 8.3 SSE 에러 처리
+### 8.3 MFC 메시지 기반 비동기 오류 처리
 
-- SSE 연결 중 예외 발생 시 `event: error` 이벤트 전송 후 스트림 종료
-- 클라이언트는 `error` 이벤트 수신 시 연결 닫고 Toast 표시
-- SSE 자동 재연결: `EventSource` 기본 재연결 사용 (분석 완료 후에는 재연결 차단)
+- 백그라운드 스레드에서 오류 발생 시 `PostMessage(WM_ASYNC_ERROR, ...)` 사용 (직접 UI 조작 금지)
+- 메인 스레드 핸들러에서 `AppError` 디코딩 후 UI 업데이트
+
+```cpp
+// 커스텀 메시지 정의
+#define WM_IMPORT_PROGRESS   (WM_USER + 100)  // WPARAM: stage, LPARAM: progress*100
+#define WM_IMPORT_COMPLETE   (WM_USER + 101)  // WPARAM: datasource_id
+#define WM_ANALYSIS_PROGRESS (WM_USER + 102)  // WPARAM: step_index, LPARAM: CotStep*
+#define WM_VISUALIZATION_READY (WM_USER + 103) // WPARAM: viz_id
+#define WM_ANALYSIS_COMPLETE (WM_USER + 104)  // WPARAM: flow_id
+#define WM_ANALYSIS_ERROR    (WM_USER + 105)  // WPARAM: AppError*
+#define WM_ASYNC_ERROR       (WM_USER + 106)  // WPARAM: AppError*
+#define WM_COT_STEP          (WM_USER + 107)  // WPARAM: CotStep*
+```
 
 ### 8.4 LLM API 장애 대응
 
@@ -1017,138 +1019,123 @@ async def app_exception_handler(request, exc: AppException):
 LLM API 호출 실패 시:
 1. 설정된 provider로 1차 시도
 2. Timeout(30초) 또는 Rate Limit → 다른 provider로 폴백 (설정된 경우)
-3. 모든 provider 실패 → LLMProviderError 발생
-4. AnalysisFlow status=failed 업데이트
-5. SSE error 이벤트 전송
-6. 사용자에게 "AI 서비스 일시 불안정" 메시지 표시 + 재시도 버튼
+3. 모든 provider 실패 → LLM_PROVIDER_ERROR 반환
+4. AnalysisFlow status='failed' SQLite 업데이트
+5. WM_ANALYSIS_ERROR 메시지 → 메인 윈도우에 통보
+6. 사용자에게 "AI 서비스 일시 불안정" AfxMessageBox 표시 + 재시도 버튼
 ```
 
-### 8.5 프론트엔드 에러 바운더리
+### 8.5 카드 단위 오류 격리
 
-```typescript
-// components/ErrorBoundary.tsx
-// 각 VisualizationCard를 ErrorBoundary로 감싸 개별 차트 오류가
-// 전체 대시보드를 망가뜨리지 않도록 격리
+```cpp
+// CVisualizationCard::OnPaint() 내부
+// 차트 렌더링 실패 시 해당 카드에만 오류 메시지 표시
+// 다른 카드 렌더링에 영향 없음
+TRY {
+    RenderChart(pDC);
+} CATCH(CException, e) {
+    pDC->DrawText(_T("차트 렌더링 오류"), rectClient, DT_CENTER | DT_VCENTER);
+}
+END_CATCH
 ```
 
 ---
 
 ## 9. 상태 관리 설계
 
-### 9.1 Zustand 스토어 구조
+### 9.1 싱글턴 매니저 클래스 구조
 
-```typescript
-// store/dashboardStore.ts
-interface DashboardStore {
-  currentDashboard: Dashboard | null;
-  visualizations: Map<string, Visualization>;
-  layout: GridLayout.Layout[];
-  selectedVisualizationId: string | null;
+```cpp
+// 앱 전역 상태는 각 싱글턴 매니저가 보유
 
-  // Actions
-  setDashboard: (dashboard: Dashboard) => void;
-  addVisualization: (viz: Visualization) => void;
-  updateVisualization: (id: string, patch: Partial<Visualization>) => void;
-  removeVisualization: (id: string) => void;
-  updateLayout: (layout: GridLayout.Layout[]) => void;
-  selectVisualization: (id: string | null) => void;
-}
+// DashboardState (CDashboardManager 내부)
+struct DashboardState {
+    DashboardDetail            currentDashboard;
+    map<CString, VisualizationInfo> visualizations;
+    vector<LayoutItem>         layout;
+    CString                    selectedVizId;
 
-// store/analysisStore.ts
-interface AnalysisStore {
-  activeFlowId: string | null;
-  flowStatus: 'idle' | 'pending' | 'running' | 'completed' | 'failed';
-  cotSteps: CotStep[];
-  isStreaming: boolean;
+    // 메서드 (PostMessage로 CDashboardCanvas에 변경 통보)
+    void SetDashboard(const DashboardDetail& detail);
+    void AddVisualization(const VisualizationInfo& viz);
+    void UpdateVisualization(const CString& id, const VisualizationInfo& patch);
+    void RemoveVisualization(const CString& id);
+    void UpdateLayout(const vector<LayoutItem>& layout);
+    void SelectVisualization(const CString& id);
+};
 
-  // Actions
-  startFlow: (flowId: string) => void;
-  appendCotStep: (step: CotStep) => void;
-  completeFlow: () => void;
-  failFlow: (error: string) => void;
-  reset: () => void;
-}
+// AnalysisState (CAnalysisManager 내부)
+struct AnalysisState {
+    CString            activeFlowId;
+    CString            flowStatus;  // "idle|pending|running|completed|failed"
+    vector<CotStep>    cotSteps;
+    BOOL               bStreaming;
 
-// store/userStore.ts
-interface UserStore {
-  user: User | null;
-  isAuthenticated: boolean;
-  quota: { used: number; limit: number } | null;
+    void StartFlow(const CString& flowId);
+    void AppendCotStep(const CotStep& step);
+    void CompleteFlow();
+    void FailFlow(const CString& error);
+    void Reset();
+};
 
-  // Actions
-  setUser: (user: User) => void;
-  clearUser: () => void;
-  updateQuota: (quota: { used: number; limit: number }) => void;
+// UserState (CLicenseManager 내부)
+struct UserState {
+    UserInfo user;
+    BOOL     bActivated;
+    QuotaInfo quota;  // { int used, limit }
+
+    void SetUser(const UserInfo& info);
+    void ClearUser();
+    void UpdateQuota(const QuotaInfo& quota);
+};
+```
+
+### 9.2 MFC 메시지 기반 비동기 통신
+
+```cpp
+// BackgroundThread → MainWindow → CDashboardCanvas 전달 패턴
+
+// 백그라운드 스레드 (분석 실행 중)
+UINT AnalysisThreadProc(LPVOID pParam) {
+    AnalysisThreadContext* ctx = (AnalysisThreadContext*)pParam;
+
+    // CoT 단계 완료 시
+    CotStep* pStep = new CotStep(...);
+    ctx->pTargetWnd->PostMessage(WM_COT_STEP, 0, (LPARAM)pStep);
+    // 수신 측에서 delete pStep 처리
+
+    // 시각화 준비 완료 시
+    ctx->pTargetWnd->PostMessage(WM_VISUALIZATION_READY, vizId, 0);
+
+    // 분석 완료 시
+    ctx->pTargetWnd->PostMessage(WM_ANALYSIS_COMPLETE, flowId, 0);
+    return 0;
 }
 ```
 
-### 9.2 SSE 연결 관리
-
-```typescript
-// lib/sse/useSseStream.ts
-
-function useSseStream(streamUrl: string | null) {
-  const [isConnected, setConnected] = useState(false);
-
-  useEffect(() => {
-    if (!streamUrl) return;
-    const es = new EventSource(streamUrl, { withCredentials: true });
-    let retryCount = 0;
-    const MAX_RETRY = 3;
-
-    es.addEventListener('cot_step', (e) => {
-      const step = JSON.parse(e.data);
-      useAnalysisStore.getState().appendCotStep(step);
-    });
-
-    es.addEventListener('visualization_ready', (e) => {
-      const viz = JSON.parse(e.data);
-      useDashboardStore.getState().addVisualization(viz);
-    });
-
-    es.addEventListener('done', () => {
-      useAnalysisStore.getState().completeFlow();
-      es.close();
-    });
-
-    es.addEventListener('error', (e) => {
-      if (retryCount >= MAX_RETRY) {
-        useAnalysisStore.getState().failFlow('연결 오류');
-        es.close();
-      }
-      retryCount++;
-    });
-
-    setConnected(true);
-    return () => es.close();
-  }, [streamUrl]);
-
-  return { isConnected };
-}
-```
-
-### 9.3 서버-클라이언트 상태 동기화 규칙
+### 9.3 상태-UI 동기화 규칙
 
 | 상태 | 저장 위치 | 동기화 방식 |
 |------|---------|-----------|
-| 대시보드 레이아웃 | Zustand + DB | debounce 500ms 후 PATCH |
-| 시각화 스타일 | Zustand + DB | 패널 닫기 또는 3초 idle 후 PATCH |
-| CoT 추론 단계 | Zustand only | SSE 수신 시 append, 페이지 이동 시 초기화 |
-| 사용자 정보/쿼터 | Zustand + 서버 | 로그인 시 fetch, 분석 완료 시 갱신 |
-| 업로드 진행 상태 | Zustand only | SSE 수신 시 업데이트, 완료 시 초기화 |
+| 대시보드 레이아웃 | `DashboardState` + SQLite | debounce 500ms 후 `DashboardManager::UpdateLayout()` |
+| 시각화 스타일 | `DashboardState` + SQLite | 패널 닫기 또는 3초 idle 후 `VisualizationManager::UpdateStyle()` |
+| CoT 추론 단계 | `AnalysisState` only | WM_COT_STEP 수신 시 append, 뷰 전환 시 초기화 |
+| 사용자 정보/쿼터 | `UserState` + SQLite | 활성화 시 로드, 분석 완료 시 갱신 |
+| 가져오기 진행 상태 | `CImportFileDlg` 로컬 | WM_IMPORT_PROGRESS 수신 시 업데이트, 완료 시 초기화 |
 
 ### 9.4 쿼터 관리 흐름
 
 ```
 분석 요청 전:
-1. userStore.quota 확인 → used >= limit 이면 QueryInput disabled + 업그레이드 안내
+1. UserState.quota 확인 → used >= limit 이면 CQueryInputDlg 비활성화 + 업그레이드 안내
 
 분석 완료 후:
-1. GET /auth/me 호출 → 최신 quota 갱신
-2. userStore.updateQuota(latest)
+1. usage_quotas 테이블에서 최신 quota 로드
+2. UserState::UpdateQuota(latest)
+3. WM_USER_QUOTA_UPDATED → CQueryInputDlg 상태 갱신
 
-서버 측:
-1. POST /analysis/query 수신 시 Redis quota:{user_id}:{month} 확인
-2. 초과 시 402 QuotaExceededError 반환
-3. 완료 시 Redis + DB usage_quotas 동시 업데이트
+앱 측:
+1. AnalysisManager::RequestAnalysis() 진입 시 SQLite quota 확인
+2. 초과 시 AppError(QUOTA_EXCEEDED) 반환
+3. 완료 시 SQLite usage_quotas 업데이트 + UserState 갱신
 ```

@@ -1,746 +1,403 @@
-# API 명세서 (API Specification)
-
-DeepMetria 백엔드 API의 전체 엔드포인트, 요청/응답 형식, 인증 규칙을 정의한 문서입니다.
+# C++ 클래스 인터페이스 명세서
 
 ## 목차
-1. 개요 (Overview) ..................... L15
-2. 인증 (Auth) ......................... L60
-3. 데이터소스 (DataSource) .............. L165
-4. 분석 (Analysis) ..................... L288
-5. 대시보드 (Dashboard) ................. L412
-6. 시각화 (Visualization) .............. L569
-7. 공통 에러 코드 (Error Codes) ........ L700
+1. 개요 (Overview) ..................... L19
+2. DataSourceManager .................. L46
+3. AnalysisEngine ..................... L109
+4. DashboardManager ................... L172
+5. LLMClient .......................... L224
+6. 공통 타입 및 에러 코드 .............. L289
+
+
+
+
+
 ---
 
 ## 1. 개요 (Overview)
 
-### 기본 정보
-- **Base URL**: `/api`
-- **Protocol**: HTTP/HTTPS (FastAPI)
-- **Response Format**: JSON
-- **Version**: 0.1.0
+DeepMetria MFC는 REST API 대신 C++ 클래스 인터페이스를 통해 기능을 제공합니다.
+모든 클래스는 싱글톤 또는 매니저 패턴으로 구현되며, MFC 메인 스레드와 워커 스레드 간
+통신은 `PostMessage` / `CEvent` 기반 비동기 패턴을 사용합니다.
 
-### 인증 방식
-모든 엔드포인트는 Bearer Token 기반 JWT 인증을 사용합니다.
+**네임스페이스:** `DeepMetria::`
 
-**요청 헤더:**
+**공통 규칙:**
+- 반환 타입 `BOOL` → TRUE 성공 / FALSE 실패 (세부 에러는 `GetLastError()`)
+- 문자열: `CString` (MFC) 또는 `std::wstring`
+- JSON 직렬화: `nlohmann::json`
+- HTTP 요청 (LLM API): `libcurl` 기반 `LLMClient`
+- SQLite 접근: `sqlite3` C API 직접 사용
+
+**의존 라이브러리:**
+
+| 라이브러리 | 용도 | 버전 |
+|------------|------|------|
+| sqlite3 | 로컬 DB | 3.45+ |
+| libcurl | LLM HTTP 요청 | 8.x |
+| nlohmann/json | JSON 파싱/직렬화 | 3.11+ |
+| OpenSSL | API 키 암호화, HTTPS | 3.x |
+
+---
+
+## 2. DataSourceManager
+
+파일 로드, 스키마 분석, 데이터 요약 생성을 담당합니다.
+
+### 헤더: `src/data/DataSourceManager.h`
+
+```cpp
+namespace DeepMetria {
+
+class DataSourceManager {
+public:
+    // 싱글톤 접근
+    static DataSourceManager& GetInstance();
+
+    // 파일 로드 (CSV/Excel/JSON) — 워커 스레드에서 실행
+    // filePath: 로컬 파일 전체 경로
+    // 완료 시 WM_DM_DATASOURCE_READY 메시지 전송
+    BOOL LoadFile(const CString& filePath, HWND hNotifyWnd);
+
+    // 전체 데이터소스 목록 조회
+    std::vector<DataSourceInfo> GetAllDataSources() const;
+
+    // 데이터소스 상세 조회 (스키마 + 요약 포함)
+    BOOL GetDataSource(int datasourceId, DataSourceDetail& outDetail) const;
+
+    // 데이터소스 삭제 (연관 레코드 CASCADE 삭제)
+    BOOL DeleteDataSource(int datasourceId);
+
+    // 마지막 에러 문자열 반환
+    CString GetLastErrorMsg() const;
+
+private:
+    DataSourceManager() = default;
+    BOOL ParseCSV(const CString& filePath, int datasourceId);
+    BOOL ParseExcel(const CString& filePath, int datasourceId);
+    BOOL ParseJSON(const CString& filePath, int datasourceId);
+    BOOL ComputeStatistics(int datasourceId);
+};
+
+} // namespace DeepMetria
 ```
-Authorization: Bearer {access_token}
+
+### 구조체
+
+```cpp
+struct DataSourceInfo {
+    int     id;
+    CString name;
+    CString filePath;
+    CString fileType;   // "csv" | "excel" | "json"
+    INT64   fileSize;
+    int     rowCount;
+    int     columnCount;
+    CString status;     // "processing" | "ready" | "error"
+    CString errorMessage;
+    CString createdAt;
+};
+
+struct ColumnSchema {
+    int     id;
+    CString columnName;
+    int     columnIndex;
+    CString dtype;      // "string" | "int" | "float" | "datetime" | "boolean"
+    BOOL    nullable;
+    std::vector<CString> sampleValues;
+};
+
+struct DataSourceDetail : public DataSourceInfo {
+    std::vector<ColumnSchema> schema;
+    nlohmann::json            statistics; // mean/std/min/max per column
+    CString                   domain;
+    CString                   description;
+};
 ```
 
-`/auth/register`, `/auth/login`, `/health`는 인증 불필요합니다.
+### 알림 메시지
 
-### 페이지네이션
-리스트 응답은 다음 쿼리 파라미터를 지원합니다:
-- `page` (int, 기본값: 1): 페이지 번호 (1부터 시작)
-- `size` (int, 기본값: 20): 페이지당 항목 수 (최대 100)
+| 메시지 상수 | wParam | lParam | 설명 |
+|-------------|--------|--------|------|
+| `WM_DM_DATASOURCE_READY` | datasourceId | 0 | 파일 로드/분석 완료 |
+| `WM_DM_DATASOURCE_ERROR` | datasourceId | errorCode | 로드 실패 |
 
-### 응답 구조
-모든 응답은 다음 형식을 따릅니다:
+---
 
-**성공 응답 (2xx):**
-```json
-{
-  "data": { /* 응답 바디 */ }
-}
+## 3. AnalysisEngine
+
+자연어 질문 → LLM 분석 → 시각화 생성 파이프라인을 담당합니다.
+
+### 헤더: `src/analysis/AnalysisEngine.h`
+
+```cpp
+namespace DeepMetria {
+
+class AnalysisEngine {
+public:
+    static AnalysisEngine& GetInstance();
+
+    // 분석 시작 — 워커 스레드에서 LLM 호출
+    // 반환: flowId (음수면 실패)
+    int StartAnalysis(const AnalysisRequest& req, HWND hNotifyWnd);
+
+    // 진행 중인 분석 취소
+    BOOL CancelAnalysis(int flowId);
+
+    // 분석 결과 조회 (completed 상태일 때만 유효)
+    BOOL GetAnalysisResult(int flowId, AnalysisResult& outResult) const;
+
+    // 분석 이력 목록
+    std::vector<AnalysisFlowInfo> GetFlowHistory(int datasourceId) const;
+
+    CString GetLastErrorMsg() const;
+
+private:
+    AnalysisEngine() = default;
+    BOOL BuildPrompt(const AnalysisRequest& req, std::string& outPrompt) const;
+    BOOL ParseLLMResponse(const std::string& response, AnalysisResult& out) const;
+};
+
+} // namespace DeepMetria
 ```
 
-**에러 응답 (4xx, 5xx):**
-```json
-{
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "에러 설명"
-  }
-}
+### 구조체
+
+```cpp
+struct AnalysisRequest {
+    int     datasourceId;
+    int     dashboardId;  // 0이면 미지정
+    CString question;     // 자연어 질문 (최대 2000자)
+};
+
+struct CotStep {
+    int     step;
+    CString description;
+};
+
+struct ToolCall {
+    CString tool;
+    CString function;
+    nlohmann::json params;
+};
+
+struct AnalysisResult {
+    int                    flowId;
+    CString                status;  // "pending"|"running"|"completed"|"failed"
+    CString                llmProvider;
+    CString                llmModel;
+    std::vector<CotStep>   cotSteps;
+    std::vector<ToolCall>  toolCalls;
+    nlohmann::json         vizConfig;  // 생성된 시각화 설정
+    CString                errorMessage;
+};
+
+struct AnalysisFlowInfo {
+    int     flowId;
+    int     datasourceId;
+    CString question;
+    CString status;
+    CString createdAt;
+};
+```
+
+### 알림 메시지
+
+| 메시지 상수 | wParam | lParam | 설명 |
+|-------------|--------|--------|------|
+| `WM_DM_ANALYSIS_COT_STEP` | flowId | stepIndex | CoT 단계 진행 |
+| `WM_DM_ANALYSIS_COMPLETE` | flowId | 0 | 분석 완료 |
+| `WM_DM_ANALYSIS_ERROR` | flowId | errorCode | 분석 실패 |
+
+---
+
+## 4. DashboardManager
+
+대시보드 및 시각화 CRUD를 담당합니다.
+
+### 헤더: `src/dashboard/DashboardManager.h`
+
+```cpp
+namespace DeepMetria {
+
+class DashboardManager {
+public:
+    static DashboardManager& GetInstance();
+
+    // 대시보드 CRUD
+    int  CreateDashboard(const CString& name, int datasourceId);
+    BOOL GetDashboard(int dashboardId, DashboardDetail& outDetail) const;
+    std::vector<DashboardInfo> GetAllDashboards() const;
+    BOOL UpdateDashboard(int dashboardId, const CString& name,
+                         const nlohmann::json& layout);
+    BOOL DeleteDashboard(int dashboardId);  // 소프트 삭제
+
+    // 시각화 CRUD
+    int  AddVisualization(const VizCreateParams& params);
+    BOOL GetVisualization(int vizId, VizDetail& outDetail) const;
+    BOOL UpdateVisualization(int vizId, const VizUpdateParams& params);
+    BOOL DeleteVisualization(int vizId);
+
+    // 시각화 PNG 내보내기
+    // outFilePath: 저장할 경로 (비워두면 임시 경로 자동 지정)
+    BOOL ExportVizAsPNG(int vizId, CString& outFilePath) const;
+
+    CString GetLastErrorMsg() const;
+};
+
+} // namespace DeepMetria
+```
+
+### 구조체
+
+```cpp
+struct DashboardInfo {
+    int     id;
+    int     datasourceId;
+    CString name;
+    CString createdAt;
+    CString updatedAt;
+};
+
+struct DashboardDetail : public DashboardInfo {
+    nlohmann::json          layout;
+    std::vector<VizDetail>  visualizations;
+};
+
+struct VizCreateParams {
+    int            dashboardId;
+    int            flowId;     // 0이면 수동 생성
+    CString        vizType;    // "line"|"bar"|"pie" 등
+    CString        title;
+    nlohmann::json chartConfig;
+    nlohmann::json style;
+    nlohmann::json position;
+};
+
+struct VizUpdateParams {
+    CString        title;
+    nlohmann::json chartConfig;
+    nlohmann::json style;
+    nlohmann::json position;
+};
+
+struct VizDetail {
+    int            id;
+    int            dashboardId;
+    int            flowId;
+    CString        vizType;
+    CString        title;
+    nlohmann::json chartConfig;
+    nlohmann::json style;
+    nlohmann::json position;
+    CString        createdAt;
+    CString        updatedAt;
+};
 ```
 
 ---
 
-## 2. 인증 (Auth)
+## 5. LLMClient
 
-### POST /api/auth/register
-신규 사용자 등록 및 JWT 토큰 발급
+libcurl 기반 LLM API HTTP 클라이언트입니다.
 
-**인증 필요**: 불필요
+### 헤더: `src/llm/LLMClient.h`
 
-**요청:**
-```json
-{
-  "email": "user@example.com",
-  "password": "MyPassword123",
-  "name": "사용자명"
-}
+```cpp
+namespace DeepMetria {
+
+enum class LLMProvider { Anthropic, OpenAI, Gemini };
+
+struct LLMRequest {
+    LLMProvider provider;
+    CString     model;
+    CString     systemPrompt;
+    CString     userMessage;
+    int         maxTokens;   // 기본값 4096
+    float       temperature; // 기본값 0.0f
+};
+
+struct LLMResponse {
+    BOOL    success;
+    CString content;         // 응답 텍스트
+    int     inputTokens;
+    int     outputTokens;
+    CString errorMessage;
+};
+
+class LLMClient {
+public:
+    static LLMClient& GetInstance();
+
+    // 동기 호출 (워커 스레드에서 사용)
+    LLMResponse Call(const LLMRequest& req);
+
+    // API 키 설정 (app_settings에서 로드)
+    void SetApiKey(LLMProvider provider, const CString& apiKey);
+
+    // 연결 테스트
+    BOOL TestConnection(LLMProvider provider, CString& outError);
+
+    // 타임아웃 설정 (초, 기본 60)
+    void SetTimeoutSeconds(long seconds);
+
+private:
+    LLMClient();
+    ~LLMClient();
+    CURL*   m_curl;
+    long    m_timeoutSec = 60;
+    std::map<LLMProvider, CString> m_apiKeys;
+
+    LLMResponse CallAnthropic(const LLMRequest& req);
+    LLMResponse CallOpenAI(const LLMRequest& req);
+    LLMResponse CallGemini(const LLMRequest& req);
+};
+
+} // namespace DeepMetria
 ```
 
-**요청 검증:**
-- `email`: 유효한 이메일 형식
-- `password`: 8~128자, 영문 + 숫자 필수
-- `name`: 1~100자
-
-**응답 (201 Created):**
-```json
-{
-  "user": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "email": "user@example.com",
-    "name": "사용자명",
-    "tier": "free",
-    "created_at": "2026-04-21T10:00:00Z"
-  },
-  "access_token": "eyJhbGc...",
-  "refresh_token": "eyJhbGc..."
-}
-```
-
----
-
-### POST /api/auth/login
-이메일/비밀번호로 로그인
-
-**인증 필요**: 불필요
-
-**요청:**
-```json
-{
-  "email": "user@example.com",
-  "password": "MyPassword123"
-}
-```
-
-**응답 (200 OK):**
-```json
-{
-  "access_token": "eyJhbGc...",
-  "refresh_token": "eyJhbGc...",
-  "expires_in": 1800
-}
-```
-
----
-
-### POST /api/auth/refresh
-Refresh Token으로 새 Access Token 발급
-
-**인증 필요**: 불필요
-
-**요청:**
-```json
-{
-  "refresh_token": "eyJhbGc..."
-}
-```
-
-**응답 (200 OK):**
-```json
-{
-  "access_token": "eyJhbGc...",
-  "expires_in": 1800
-}
+**libcurl 초기화 (앱 시작 시):**
+```cpp
+// CDeepMetriaApp::InitInstance()
+curl_global_init(CURL_GLOBAL_ALL);
+// 앱 종료 시
+curl_global_cleanup();
 ```
 
 ---
 
-### GET /api/auth/me
-현재 로그인한 사용자 정보 + 이번 달 사용량 조회
+## 6. 공통 타입 및 에러 코드
 
-**인증 필요**: 필수 (Bearer Token)
+### 에러 코드 열거형
 
-**응답 (200 OK):**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "email": "user@example.com",
-  "name": "사용자명",
-  "tier": "free",
-  "usage": {
-    "used": 5,
-    "limit": 10
-  }
-}
+```cpp
+namespace DeepMetria {
+
+enum class ErrorCode : int {
+    Success             = 0,
+    FileNotFound        = 1001,
+    UnsupportedFormat   = 1002,
+    FileTooLarge        = 1003,   // 기본 한도: 200MB
+    ParseError          = 1004,
+    DatabaseError       = 2001,
+    RecordNotFound      = 2002,
+    LLMApiKeyMissing    = 3001,
+    LLMRequestFailed    = 3002,
+    LLMTimeout          = 3003,   // 기본 60초
+    LLMQuotaExceeded    = 3004,
+    UnknownError        = 9999,
+};
+
+} // namespace DeepMetria
 ```
 
----
-
-## 3. 데이터소스 (DataSource)
-
-### POST /api/datasources/upload
-파일 업로드 및 DataSource 생성 (CSV / Excel / JSON)
-
-**인증 필요**: 필수 (Bearer Token)
-
-**요청:**
-- **Content-Type**: `multipart/form-data`
-- **file** (file, 필수): CSV/Excel/JSON 파일 (최대 50MB)
-- **name** (string, 선택): 데이터소스 이름 (미제공 시 파일명 사용)
-
-**응답 (202 Accepted):**
-```json
-{
-  "datasource_id": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "processing",
-  "stream_url": "/api/datasources/550e8400-e29b-41d4-a716-446655440000/stream"
-}
-```
-
----
-
-### GET /api/datasources
-사용자 데이터소스 목록 조회
-
-**인증 필요**: 필수 (Bearer Token)
-
-**쿼리 파라미터:**
-- `page` (int, 기본값: 1): 페이지 번호
-- `size` (int, 기본값: 20): 페이지당 항목 수
-
-**응답 (200 OK):**
-```json
-{
-  "items": [
-    {
-      "id": "550e8400-e29b-41d4-a716-446655440000",
-      "name": "sales_data.csv",
-      "file_type": "csv",
-      "file_size": 102400,
-      "row_count": 1000,
-      "column_count": 5,
-      "status": "completed",
-      "error_message": null,
-      "created_at": "2026-04-21T10:00:00Z"
-    }
-  ],
-  "total": 15,
-  "page": 1
-}
-```
-
----
-
-### GET /api/datasources/{datasource_id}
-데이터소스 상세 조회 (스키마 + 요약 포함)
-
-**인증 필요**: 필수 (Bearer Token)
-
-**경로 파라미터:**
-- `datasource_id` (UUID): 데이터소스 ID
-
-**응답 (200 OK):**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "sales_data.csv",
-  "status": "completed",
-  "file_type": "csv",
-  "file_size": 102400,
-  "row_count": 1000,
-  "column_count": 5,
-  "schema": [
-    {
-      "id": "550e8400-e29b-41d4-a716-446655440001",
-      "column_name": "date",
-      "column_index": 0,
-      "dtype": "datetime",
-      "nullable": false,
-      "sample_values": ["2026-01-01", "2026-01-02"]
-    },
-    {
-      "id": "550e8400-e29b-41d4-a716-446655440002",
-      "column_name": "amount",
-      "column_index": 1,
-      "dtype": "float",
-      "nullable": false,
-      "sample_values": [100.5, 250.3]
-    }
-  ],
-  "summary": {
-    "id": "550e8400-e29b-41d4-a716-446655440003",
-    "domain": "판매",
-    "description": "월별 판매 데이터",
-    "statistics": {
-      "amount": {
-        "mean": 500.0,
-        "std": 150.0,
-        "min": 10.0,
-        "max": 2000.0
-      }
-    },
-    "row_count": 1000
-  }
-}
-```
-
----
-
-### DELETE /api/datasources/{datasource_id}
-데이터소스 삭제 (연관 분석 결과, 시각화 포함)
-
-**인증 필요**: 필수 (Bearer Token)
-
-**경로 파라미터:**
-- `datasource_id` (UUID): 데이터소스 ID
-
-**응답 (204 No Content):**
-응답 바디 없음
-
----
-
-## 4. 분석 (Analysis)
-
-### POST /api/analysis/query
-분석 시작 및 flow_id 반환
-
-**인증 필요**: 필수 (Bearer Token)
-
-**요청:**
-```json
-{
-  "datasource_id": "550e8400-e29b-41d4-a716-446655440000",
-  "dashboard_id": "550e8400-e29b-41d4-a716-446655440010",
-  "question": "지난 3개월간 월별 판매 추이는?"
-}
-```
-
-**요청 검증:**
-- `datasource_id` (UUID, 필수): 분석 대상 데이터소스
-- `dashboard_id` (UUID, 선택): 분석 결과를 추가할 대시보드
-- `question` (string, 필수): 1~2000자
-
-**응답 (201 Created):**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440100",
-  "user_id": "550e8400-e29b-41d4-a716-446655440000",
-  "datasource_id": "550e8400-e29b-41d4-a716-446655440000",
-  "dashboard_id": "550e8400-e29b-41d4-a716-446655440010",
-  "question": "지난 3개월간 월별 판매 추이는?",
-  "status": "pending",
-  "llm_provider": null,
-  "llm_model": null,
-  "cot_steps": [],
-  "tool_calls": [],
-  "error_message": null,
-  "created_at": "2026-04-21T10:00:00Z",
-  "updated_at": "2026-04-21T10:00:00Z"
-}
-```
-
----
-
-### GET /api/analysis/{flow_id}/stream
-SSE 스트림 — CoT 진행 과정 실시간 전달
-
-**인증 필요**: 필수 (Bearer Token)
-
-**경로 파라미터:**
-- `flow_id` (UUID): 분석 플로우 ID
-
-**응답 (200 OK):**
-Server-Sent Events (SSE) 스트림
-
-**이벤트 타입:**
-
-1. **cot_step**: 사고 과정 단계
-```json
-{
-  "event": "cot_step",
-  "step": 1,
-  "description": "데이터를 로드하고 기본 통계 계산"
-}
-```
-
-2. **tool_call**: 도구 호출 (pandas, LLM 등)
-```json
-{
-  "event": "tool_call",
-  "tool": "pandas",
-  "function": "groupby",
-  "params": {"by": "month"}
-}
-```
-
-3. **error**: 에러 발생
-```json
-{
-  "event": "error",
-  "message": "분석 중 오류가 발생했습니다."
-}
-```
-
----
-
-### GET /api/analysis/{flow_id}
-분석 결과 조회 (최종 상태)
-
-**인증 필요**: 필수 (Bearer Token)
-
-**경로 파라미터:**
-- `flow_id` (UUID): 분석 플로우 ID
-
-**응답 (200 OK):**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440100",
-  "user_id": "550e8400-e29b-41d4-a716-446655440000",
-  "datasource_id": "550e8400-e29b-41d4-a716-446655440000",
-  "dashboard_id": "550e8400-e29b-41d4-a716-446655440010",
-  "question": "지난 3개월간 월별 판매 추이는?",
-  "status": "completed",
-  "llm_provider": "openai",
-  "llm_model": "gpt-4",
-  "cot_steps": [
-    {
-      "step": 1,
-      "description": "데이터를 로드하고 기본 통계 계산"
-    }
-  ],
-  "tool_calls": [
-    {
-      "tool": "pandas",
-      "function": "groupby",
-      "params": {"by": "month"}
-    }
-  ],
-  "error_message": null,
-  "created_at": "2026-04-21T10:00:00Z",
-  "updated_at": "2026-04-21T10:00:30Z"
-}
-```
-
----
-
-## 5. 대시보드 (Dashboard)
-
-### GET /api/dashboards
-사용자 대시보드 목록 조회
-
-**인증 필요**: 필수 (Bearer Token)
-
-**쿼리 파라미터:**
-- `page` (int, 기본값: 1): 페이지 번호
-- `size` (int, 기본값: 20): 페이지당 항목 수
-
-**응답 (200 OK):**
-```json
-{
-  "items": [
-    {
-      "id": "550e8400-e29b-41d4-a716-446655440010",
-      "user_id": "550e8400-e29b-41d4-a716-446655440000",
-      "datasource_id": "550e8400-e29b-41d4-a716-446655440000",
-      "name": "2026년 판매 현황",
-      "layout": [],
-      "created_at": "2026-04-21T10:00:00Z",
-      "updated_at": "2026-04-21T10:00:00Z"
-    }
-  ],
-  "total": 5,
-  "page": 1
-}
-```
-
----
-
-### POST /api/dashboards
-새 대시보드 생성
-
-**인증 필요**: 필수 (Bearer Token)
-
-**요청:**
-```json
-{
-  "name": "2026년 판매 현황",
-  "datasource_id": "550e8400-e29b-41d4-a716-446655440000",
-  "layout": []
-}
-```
-
-**요청 검증:**
-- `name` (string, 필수): 1~255자
-- `datasource_id` (UUID, 필수): 연결할 데이터소스
-- `layout` (array, 선택): 레이아웃 배열 (기본값: [])
-
-**응답 (201 Created):**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440010",
-  "user_id": "550e8400-e29b-41d4-a716-446655440000",
-  "datasource_id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "2026년 판매 현황",
-  "layout": [],
-  "created_at": "2026-04-21T10:00:00Z",
-  "updated_at": "2026-04-21T10:00:00Z"
-}
-```
-
----
-
-### GET /api/dashboards/{dashboard_id}
-대시보드 상세 조회 (시각화 포함)
-
-**인증 필요**: 필수 (Bearer Token)
-
-**경로 파라미터:**
-- `dashboard_id` (UUID): 대시보드 ID
-
-**응답 (200 OK):**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440010",
-  "user_id": "550e8400-e29b-41d4-a716-446655440000",
-  "datasource_id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "2026년 판매 현황",
-  "layout": [
-    {
-      "id": "550e8400-e29b-41d4-a716-446655440020",
-      "x": 0,
-      "y": 0,
-      "width": 6,
-      "height": 4
-    }
-  ],
-  "created_at": "2026-04-21T10:00:00Z",
-  "updated_at": "2026-04-21T10:00:00Z"
-}
-```
-
----
-
-### PATCH /api/dashboards/{dashboard_id}
-대시보드 이름 또는 레이아웃 업데이트
-
-**인증 필요**: 필수 (Bearer Token)
-
-**경로 파라미터:**
-- `dashboard_id` (UUID): 대시보드 ID
-
-**요청:**
-```json
-{
-  "name": "2026년 판매 현황 (수정됨)",
-  "layout": [
-    {
-      "id": "550e8400-e29b-41d4-a716-446655440020",
-      "x": 0,
-      "y": 0,
-      "width": 8,
-      "height": 6
-    }
-  ]
-}
-```
-
-**응답 (200 OK):**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440010",
-  "user_id": "550e8400-e29b-41d4-a716-446655440000",
-  "datasource_id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "2026년 판매 현황 (수정됨)",
-  "layout": [
-    {
-      "id": "550e8400-e29b-41d4-a716-446655440020",
-      "x": 0,
-      "y": 0,
-      "width": 8,
-      "height": 6
-    }
-  ],
-  "created_at": "2026-04-21T10:00:00Z",
-  "updated_at": "2026-04-21T10:05:00Z"
-}
-```
-
----
-
-### DELETE /api/dashboards/{dashboard_id}
-대시보드 소프트 삭제
-
-**인증 필요**: 필수 (Bearer Token)
-
-**경로 파라미터:**
-- `dashboard_id` (UUID): 대시보드 ID
-
-**응답 (204 No Content):**
-응답 바디 없음
-
----
-
-## 6. 시각화 (Visualization)
-
-### GET /api/visualizations/{viz_id}
-시각화 상세 조회
-
-**인증 필요**: 필수 (Bearer Token)
-
-**경로 파라미터:**
-- `viz_id` (UUID): 시각화 ID
-
-**응답 (200 OK):**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440020",
-  "dashboard_id": "550e8400-e29b-41d4-a716-446655440010",
-  "user_id": "550e8400-e29b-41d4-a716-446655440000",
-  "viz_type": "line_chart",
-  "title": "월별 판매액 추이",
-  "chart_config": {
-    "x_axis": "month",
-    "y_axis": "amount",
-    "series": ["2026"]
-  },
-  "style": {
-    "color_scheme": "blue",
-    "font_size": 12
-  },
-  "position": {
-    "x": 0,
-    "y": 0,
-    "width": 6,
-    "height": 4
-  },
-  "created_at": "2026-04-21T10:00:00Z",
-  "updated_at": "2026-04-21T10:00:00Z"
-}
-```
-
----
-
-### PATCH /api/visualizations/{viz_id}
-시각화 스타일, 위치, 설정 수정
-
-**인증 필요**: 필수 (Bearer Token)
-
-**경로 파라미터:**
-- `viz_id` (UUID): 시각화 ID
-
-**요청:**
-```json
-{
-  "title": "월별 판매액 추이 (2026년)",
-  "chart_config": {
-    "x_axis": "month",
-    "y_axis": "amount",
-    "series": ["2026", "2025"]
-  },
-  "style": {
-    "color_scheme": "green",
-    "font_size": 14
-  },
-  "position": {
-    "x": 0,
-    "y": 0,
-    "width": 8,
-    "height": 5
-  }
-}
-```
-
-**응답 (200 OK):**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440020",
-  "dashboard_id": "550e8400-e29b-41d4-a716-446655440010",
-  "user_id": "550e8400-e29b-41d4-a716-446655440000",
-  "viz_type": "line_chart",
-  "title": "월별 판매액 추이 (2026년)",
-  "chart_config": {
-    "x_axis": "month",
-    "y_axis": "amount",
-    "series": ["2026", "2025"]
-  },
-  "style": {
-    "color_scheme": "green",
-    "font_size": 14
-  },
-  "position": {
-    "x": 0,
-    "y": 0,
-    "width": 8,
-    "height": 5
-  },
-  "created_at": "2026-04-21T10:00:00Z",
-  "updated_at": "2026-04-21T10:05:00Z"
-}
-```
-
----
-
-### DELETE /api/visualizations/{viz_id}
-시각화 삭제
-
-**인증 필요**: 필수 (Bearer Token)
-
-**경로 파라미터:**
-- `viz_id` (UUID): 시각화 ID
-
-**응답 (204 No Content):**
-응답 바디 없음
-
----
-
-### GET /api/visualizations/{viz_id}/export
-시각화 PNG 내보내기
-
-**인증 필요**: 필수 (Bearer Token)
-
-**경로 파라미터:**
-- `viz_id` (UUID): 시각화 ID
-
-**쿼리 파라미터:**
-- `format` (string, 기본값: "png"): PNG만 지원
-
-**응답 (200 OK):**
-- **Content-Type**: `image/png`
-- **바디**: PNG 바이너리 데이터
-- **헤더**: `Content-Disposition: attachment; filename="visualization_{viz_id}.png"`
-
----
-
-## 7. 공통 에러 코드 (Error Codes)
-
-### 인증 관련 에러
-
-| HTTP | Code | Message |
-|------|------|---------|
-| 401 | INVALID_CREDENTIALS | 이메일 또는 비밀번호가 올바르지 않습니다. |
-| 401 | INVALID_TOKEN | 유효하지 않거나 만료된 토큰입니다. |
-| 409 | EMAIL_ALREADY_EXISTS | 이미 사용 중인 이메일입니다. |
-
-### 리소스 관련 에러
-
-| HTTP | Code | Message |
-|------|------|---------|
-| 404 | NOT_FOUND | 요청한 리소스를 찾을 수 없습니다. |
-| 403 | FORBIDDEN | 접근 권한이 없습니다. |
-
-### 사용량 관련 에러
-
-| HTTP | Code | Message |
-|------|------|---------|
-| 429 | QUOTA_EXCEEDED | 이번 달 사용량 한도를 초과했습니다. |
-
-### 입력값 검증 에러
-
-| HTTP | Code | Message |
-|------|------|---------|
-| 400 | VALIDATION_ERROR | 입력값이 올바르지 않습니다. |
-
-### 서버 에러
-
-| HTTP | Code | Message |
-|------|------|---------|
-| 500 | INTERNAL_ERROR | 서버 내부 오류가 발생했습니다. |
-
----
-
-## 에러 응답 예제
-
-```json
-{
-  "error": {
-    "code": "INVALID_CREDENTIALS",
-    "message": "이메일 또는 비밀번호가 올바르지 않습니다."
-  }
-}
+### WM_DM_* 메시지 등록
+
+```cpp
+// src/common/Messages.h
+#define WM_DM_DATASOURCE_READY  (WM_APP + 100)
+#define WM_DM_DATASOURCE_ERROR  (WM_APP + 101)
+#define WM_DM_ANALYSIS_COT_STEP (WM_APP + 110)
+#define WM_DM_ANALYSIS_COMPLETE (WM_APP + 111)
+#define WM_DM_ANALYSIS_ERROR    (WM_APP + 112)
 ```
