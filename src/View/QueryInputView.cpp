@@ -2,8 +2,8 @@
 #include "QueryInputView.h"
 #include "DashboardView.h"
 
-// AnalysisOrchestrator 연동 (구현 완료 후 활성화)
-// #include "../Domain/Orchestrator/AnalysisOrchestrator.h"
+// AnalysisFlow 타입 참조 (WM_ANALYSIS_DONE LPARAM 처리에 필요)
+#include "../Domain/Orchestrator/AnalysisFlow.h"
 
 // ============================================================
 // IMPLEMENT_DYNCREATE / 메시지 맵
@@ -128,32 +128,73 @@ BOOL CQueryInputView::PreTranslateMessage(MSG* pMsg)
 // ============================================================
 // 커스텀 메시지 핸들러
 // ============================================================
-// WM_ANALYSIS_PROGRESS: WPARAM = 진행률(0-100), LPARAM = 단계 메시지 CString*
+// WM_ANALYSIS_PROGRESS: WPARAM = 단계 번호(1-4), LPARAM = 단계 메시지 CString* 또는 0
+// 메모리 소유권: AnalysisOrchestrator(송신 측)에서 new, 이 핸들러(수신 측)에서 delete.
+// MainFrm 등 다른 곳에서는 절대 delete 하지 않는다 — 이중 해제 방지.
 LRESULT CQueryInputView::OnAnalysisProgress(WPARAM wParam, LPARAM lParam)
 {
-    int progress = (int)wParam;
+    // WPARAM(단계 1-4)을 진행률 %로 환산 (1→25, 2→50, 3→75, 4→100)
+    int step     = (int)wParam;
+    int progress = (step > 0 && step <= 4) ? step * 25 : (int)wParam;
     m_progressBar.SetPos(progress);
 
     if (lParam != 0)
     {
-        // LPARAM: 단계 문자열 포인터 (호출 측에서 new, 수신 측에서 delete)
+        // 소유권 이전: AnalysisOrchestrator가 new, 여기서 delete — 유일한 해제 지점
         CString* pMsg = reinterpret_cast<CString*>(lParam);
         UpdateStatusText(*pMsg);
-        delete pMsg;
+        delete pMsg;  // 이 핸들러만 해제 — 다른 핸들러에서 중복 해제 금지
+        pMsg = nullptr;
     }
     return 0;
 }
 
-// WM_ANALYSIS_DONE: WPARAM = flowId, LPARAM = 0
+// WM_ANALYSIS_DONE: WPARAM = 0(취소/오류) 또는 1(성공),
+//                  LPARAM = heap 할당된 AnalysisFlow* 또는 0(취소 시)
+// 메모리 소유권: AnalysisOrchestrator(송신 측)에서 new, 이 핸들러(수신 측)에서 delete.
+// MainFrm 등 다른 곳에서는 절대 delete 하지 않는다 — 이중 해제 방지.
 LRESULT CQueryInputView::OnAnalysisDone(WPARAM wParam, LPARAM lParam)
 {
     SetAnalyzingState(FALSE);
-    m_progressBar.SetPos(100);
-    UpdateStatusText(_T("분석 완료."));
 
-    // DashboardView에 시각화 추가 요청
-    if (m_pDashboardView && ::IsWindow(m_pDashboardView->GetSafeHwnd()))
-        m_pDashboardView->SendMessage(WM_VISUALIZATION_READY, wParam, 0);
+    // 소유권 이전: AnalysisOrchestrator가 new, 여기서 delete — 유일한 해제 지점
+    AnalysisFlow* pFlow = reinterpret_cast<AnalysisFlow*>(lParam);
+
+    if (pFlow == nullptr)
+    {
+        // lParam == 0: 취소 또는 오류로 인한 조기 종료
+        m_progressBar.SetPos(0);
+        UpdateStatusText(_T("분석이 취소되었습니다."));
+        return 0;
+    }
+
+    m_progressBar.SetPos(100);
+
+    if (pFlow->state == AnalysisFlowState::Done)
+    {
+        UpdateStatusText(_T("분석 완료."));
+        // DashboardView에 시각화 추가 요청 (pFlow 소유권을 DashboardView로 이전)
+        if (m_pDashboardView && ::IsWindow(m_pDashboardView->GetSafeHwnd()))
+        {
+            // SendMessage: DashboardView가 pFlow를 처리하고 delete 책임을 가짐
+            m_pDashboardView->SendMessage(WM_VISUALIZATION_READY, wParam,
+                                          reinterpret_cast<LPARAM>(pFlow));
+            pFlow = nullptr;  // 소유권 이전 완료 — 이 핸들러에서 delete 하지 않음
+        }
+        else
+        {
+            // DashboardView 없음 — 여기서 해제
+            delete pFlow;
+            pFlow = nullptr;
+        }
+    }
+    else
+    {
+        // 오류 상태: 로그 후 해제
+        UpdateStatusText(_T("분석 중 오류가 발생했습니다."));
+        delete pFlow;  // 오류 시 이 핸들러에서 해제
+        pFlow = nullptr;
+    }
 
     return 0;
 }

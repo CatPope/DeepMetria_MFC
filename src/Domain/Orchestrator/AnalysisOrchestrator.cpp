@@ -30,22 +30,25 @@ BOOL AnalysisOrchestrator::AnalyzeQuestion(const DataTable&   data,
                                             const CString&     question,
                                             HWND               hNotifyWnd)
 {
-    if (m_state != AnalysisFlowState::Idle &&
-        m_state != AnalysisFlowState::Done  &&
-        m_state != AnalysisFlowState::Error) {
+    // atomic 읽기 — 스레드 안전 상태 확인
+    AnalysisFlowState curState = m_state.load();
+    if (curState != AnalysisFlowState::Idle &&
+        curState != AnalysisFlowState::Done  &&
+        curState != AnalysisFlowState::Error) {
         // 이미 실행 중
         return FALSE;
     }
 
-    m_bCancelled = FALSE;
-    m_state      = AnalysisFlowState::Planning;
+    m_bCancelled.store(FALSE);        // 취소 플래그 초기화 (atomic)
+    m_state.store(AnalysisFlowState::Planning); // 상태 설정 (atomic)
 
     // Worker Thread 파라미터 (heap 할당 — 스레드 종료 시 delete)
     OrchestratorThreadParam* pParam = new OrchestratorThreadParam();
-    pParam->pData      = &data;
-    pParam->pSummary   = &summary;
-    pParam->question   = question;
-    pParam->hNotifyWnd = hNotifyWnd;
+    pParam->pData         = &data;
+    pParam->pSummary      = &summary;
+    pParam->question      = question;
+    pParam->hNotifyWnd    = hNotifyWnd;
+    pParam->pOrchestrator = this;   // 취소 플래그 확인용 (소유권 없음)
     // AnalysisFlow는 스레드가 heap에 직접 생성하여 완료 메시지 LPARAM으로 전달
     pParam->pFlow = nullptr;
 
@@ -59,7 +62,7 @@ BOOL AnalysisOrchestrator::AnalyzeQuestion(const DataTable&   data,
 
     if (!m_pThread) {
         delete pParam;
-        m_state = AnalysisFlowState::Error;
+        m_state.store(AnalysisFlowState::Error);  // atomic 쓰기
         return FALSE;
     }
 
@@ -70,13 +73,13 @@ BOOL AnalysisOrchestrator::AnalyzeQuestion(const DataTable&   data,
 
 void AnalysisOrchestrator::CancelAnalysis()
 {
-    m_bCancelled = TRUE;
-    // Worker Thread는 다음 단계 진입 전 m_bCancelled를 확인하여 조기 종료
+    m_bCancelled.store(TRUE);   // atomic 쓰기 — Worker Thread에서 안전하게 읽힘
+    // Worker Thread는 다음 단계 진입 전 IsCancelled()로 확인하여 조기 종료
 }
 
 AnalysisFlowState AnalysisOrchestrator::GetCurrentState() const
 {
-    return m_state;
+    return m_state.load();      // atomic 읽기 — 스레드 안전
 }
 
 // ============================================================
@@ -86,6 +89,7 @@ AnalysisFlowState AnalysisOrchestrator::GetCurrentState() const
 UINT AnalysisOrchestrator::AnalysisThreadProc(LPVOID pParam)
 {
     OrchestratorThreadParam* p = static_cast<OrchestratorThreadParam*>(pParam);
+    AnalysisOrchestrator*    pSelf = p->pOrchestrator;
 
     // heap 할당 — 완료 메시지 LPARAM으로 수신 측에 전달, 수신 측에서 delete
     AnalysisFlow* pFlow = new AnalysisFlow();
@@ -93,7 +97,20 @@ UINT AnalysisOrchestrator::AnalysisThreadProc(LPVOID pParam)
 
     HWND hWnd = p->hNotifyWnd;
 
+    // 취소 시 pFlow를 해제하고 WM_ANALYSIS_DONE을 전송하는 헬퍼 매크로
+    // (수신 측이 nullptr을 받으면 취소로 처리 — 소유권: 이 스레드)
+#define CHECK_CANCELLED() \
+    if (pSelf && pSelf->IsCancelled()) { \
+        pFlow->state = AnalysisFlowState::Idle; \
+        delete pFlow; \
+        if (::IsWindow(hWnd)) \
+            ::PostMessage(hWnd, WM_ANALYSIS_DONE, 0, 0); \
+        delete p; \
+        return 0; \
+    }
+
     // ── 1단계: 분석 계획 수립 ──────────────────────────────
+    CHECK_CANCELLED();  // 시작 전 취소 확인
     pFlow->state = AnalysisFlowState::Planning;
     if (::IsWindow(hWnd))
         ::PostMessage(hWnd, WM_ANALYSIS_PROGRESS, 1, 0);
@@ -108,6 +125,7 @@ UINT AnalysisOrchestrator::AnalysisThreadProc(LPVOID pParam)
     }
 
     // ── 2단계: 분석 도구 실행 ─────────────────────────────
+    CHECK_CANCELLED();  // 1단계 완료 후 취소 확인
     pFlow->state = AnalysisFlowState::Executing;
     if (::IsWindow(hWnd))
         ::PostMessage(hWnd, WM_ANALYSIS_PROGRESS, 2, 0);
@@ -121,6 +139,7 @@ UINT AnalysisOrchestrator::AnalysisThreadProc(LPVOID pParam)
     }
 
     // ── 3단계: 인사이트 생성 ──────────────────────────────
+    CHECK_CANCELLED();  // 2단계 완료 후 취소 확인
     pFlow->state = AnalysisFlowState::Interpreting;
     if (::IsWindow(hWnd))
         ::PostMessage(hWnd, WM_ANALYSIS_PROGRESS, 3, 0);
@@ -134,6 +153,7 @@ UINT AnalysisOrchestrator::AnalysisThreadProc(LPVOID pParam)
     }
 
     // ── 4단계: 차트 유형 결정 ─────────────────────────────
+    CHECK_CANCELLED();  // 3단계 완료 후 취소 확인
     pFlow->state = AnalysisFlowState::Visualizing;
     if (::IsWindow(hWnd))
         ::PostMessage(hWnd, WM_ANALYSIS_PROGRESS, 4, 0);
@@ -145,6 +165,8 @@ UINT AnalysisOrchestrator::AnalysisThreadProc(LPVOID pParam)
         delete p;
         return 1;
     }
+
+#undef CHECK_CANCELLED
 
     // ── 완료 ──────────────────────────────────────────────
     pFlow->state = AnalysisFlowState::Done;
@@ -186,12 +208,10 @@ BOOL AnalysisOrchestrator::Step1_Plan(AnalysisFlow&     flow,
         (LPCTSTR)schemaJson, (LPCTSTR)flow.question
     );
 
-    CString fullPrompt = systemPrompt + userPrompt;
+    LLMRouter& llmRouter = LLMRouter::Instance();
+    CString    llmResponse;
 
-    LLMRouter llmRouter;
-    CString   llmResponse;
-
-    if (!llmRouter.Chat(fullPrompt, llmResponse, outError))
+    if (!llmRouter.Chat(systemPrompt, userPrompt, llmResponse, outError))
         return FALSE;
 
     flow.plan = llmResponse;
@@ -263,10 +283,15 @@ BOOL AnalysisOrchestrator::Step3_Interpret(AnalysisFlow&    flow,
         (LPCTSTR)flow.rawResult
     );
 
-    LLMRouter llmRouter;
-    CString   llmResponse;
+    LLMRouter& llmRouter = LLMRouter::Instance();
+    CString    llmResponse;
 
-    if (!llmRouter.Chat(prompt, llmResponse, outError)) {
+    // systemPrompt: 역할 지시, userMessage: 분석 결과 + 질문
+    CString systemPrompt =
+        _T("당신은 DeepMetria의 데이터 분석 인사이트 생성기입니다.\n")
+        _T("주어진 분석 결과를 바탕으로 비즈니스 인사이트를 한국어로 3-5문장으로 설명하세요.");
+
+    if (!llmRouter.Chat(systemPrompt, prompt, llmResponse, outError)) {
         // LLM 실패 시 기본 인사이트 텍스트 사용 (치명적이지 않음)
         flow.insight = _T("분석이 완료되었습니다. 결과를 차트로 확인하세요.");
         return TRUE;

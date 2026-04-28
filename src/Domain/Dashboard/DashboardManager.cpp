@@ -32,15 +32,23 @@ BOOL DashboardManager::AddVisualization(const VisualizationInfo& viz,
         return FALSE;
 
     CString vizJson = SerializeVizInfo(viz);
+
+    // SQL 인젝션 방지: 문자열 값의 작은따옴표를 '' 로 이스케이프
+    auto EscapeSql = [](const CString& s) -> CString {
+        CString r = s;
+        r.Replace(_T("'"), _T("''"));
+        return r;
+    };
+
     CString sql;
     sql.Format(
         _T("INSERT OR REPLACE INTO visualizations (id, dashboard_id, viz_type, title, chart_config, position_x, position_y, position_w, position_h) ")
         _T("VALUES ('%s', '%s', '%s', '%s', '%s', %d, %d, %d, %d)"),
-        (LPCTSTR)viz.id,
-        (LPCTSTR)viz.dashboardId,
-        (LPCTSTR)viz.vizType,
-        (LPCTSTR)viz.title,
-        (LPCTSTR)viz.chartConfig.dataJson,
+        (LPCTSTR)EscapeSql(viz.id),
+        (LPCTSTR)EscapeSql(viz.dashboardId),
+        (LPCTSTR)EscapeSql(viz.vizType),
+        (LPCTSTR)EscapeSql(viz.title),
+        (LPCTSTR)EscapeSql(viz.chartConfig.dataJson),
         viz.position.x, viz.position.y,
         viz.position.w, viz.position.h
     );
@@ -68,8 +76,12 @@ BOOL DashboardManager::RemoveVisualization(const CString& vizId,
     if (!db.Open(outError))
         return FALSE;
 
+    // SQL 인젝션 방지: 작은따옴표 이스케이프
+    CString safeVizId = vizId;
+    safeVizId.Replace(_T("'"), _T("''"));
+
     CString sql;
-    sql.Format(_T("DELETE FROM visualizations WHERE id = '%s'"), (LPCTSTR)vizId);
+    sql.Format(_T("DELETE FROM visualizations WHERE id = '%s'"), (LPCTSTR)safeVizId);
     return db.Execute(sql, outError);
 }
 
@@ -86,12 +98,19 @@ BOOL DashboardManager::SaveDashboard(const CString& name, AppError& outError)
 
     CString layoutJson = SerializeLayout(m_layout);
 
+    // SQL 인젝션 방지: 작은따옴표 이스케이프
+    auto EscapeSql = [](const CString& s) -> CString {
+        CString r = s;
+        r.Replace(_T("'"), _T("''"));
+        return r;
+    };
+
     CString sql;
     if (m_currentDashboardId.IsEmpty()) {
         // 신규 대시보드 생성
         sql.Format(
             _T("INSERT INTO dashboards (name, layout) VALUES ('%s', '%s')"),
-            (LPCTSTR)name, (LPCTSTR)layoutJson
+            (LPCTSTR)EscapeSql(name), (LPCTSTR)EscapeSql(layoutJson)
         );
         if (!db.Execute(sql, outError))
             return FALSE;
@@ -103,7 +122,8 @@ BOOL DashboardManager::SaveDashboard(const CString& name, AppError& outError)
         // 기존 대시보드 업데이트
         sql.Format(
             _T("UPDATE dashboards SET name = '%s', layout = '%s' WHERE id = '%s'"),
-            (LPCTSTR)name, (LPCTSTR)layoutJson, (LPCTSTR)m_currentDashboardId
+            (LPCTSTR)EscapeSql(name), (LPCTSTR)EscapeSql(layoutJson),
+            (LPCTSTR)EscapeSql(m_currentDashboardId)
         );
         if (!db.Execute(sql, outError))
             return FALSE;
@@ -119,10 +139,14 @@ BOOL DashboardManager::LoadDashboard(const CString& dashboardId,
     if (!db.Open(outError))
         return FALSE;
 
+    // SQL 인젝션 방지: 작은따옴표 이스케이프
+    CString safeDashboardId = dashboardId;
+    safeDashboardId.Replace(_T("'"), _T("''"));
+
     // 대시보드 기본 정보 로드
     CString sql;
     sql.Format(_T("SELECT layout FROM dashboards WHERE id = '%s'"),
-               (LPCTSTR)dashboardId);
+               (LPCTSTR)safeDashboardId);
 
     CString layoutJson = db.QueryScalar(sql);
     if (layoutJson.IsEmpty()) {
@@ -143,7 +167,7 @@ BOOL DashboardManager::LoadDashboard(const CString& dashboardId,
     sql.Format(
         _T("SELECT id, viz_type, title, chart_config, position_x, position_y, position_w, position_h ")
         _T("FROM visualizations WHERE dashboard_id = '%s' ORDER BY rowid"),
-        (LPCTSTR)dashboardId
+        (LPCTSTR)safeDashboardId
     );
 
     std::vector<std::vector<CString>> rows = db.QueryRows(sql);
@@ -183,9 +207,16 @@ BOOL DashboardManager::UpdateLayout(const std::vector<LayoutItem>& layout,
         return FALSE;
 
     CString layoutJson = SerializeLayout(layout);
+
+    // SQL 인젝션 방지: 작은따옴표 이스케이프
+    CString safeLayout = layoutJson;
+    safeLayout.Replace(_T("'"), _T("''"));
+    CString safeDashId = m_currentDashboardId;
+    safeDashId.Replace(_T("'"), _T("''"));
+
     CString sql;
     sql.Format(_T("UPDATE dashboards SET layout = '%s' WHERE id = '%s'"),
-               (LPCTSTR)layoutJson, (LPCTSTR)m_currentDashboardId);
+               (LPCTSTR)safeLayout, (LPCTSTR)safeDashId);
 
     return db.Execute(sql, outError);
 }
@@ -220,15 +251,19 @@ BOOL DashboardManager::RemoveDashboard(const CString& dashboardId,
     if (!db.Open(outError))
         return FALSE;
 
+    // SQL 인젝션 방지: 작은따옴표 이스케이프
+    CString safeDashboardId = dashboardId;
+    safeDashboardId.Replace(_T("'"), _T("''"));
+
     // 연관 시각화 먼저 삭제
     CString sql;
     sql.Format(_T("DELETE FROM visualizations WHERE dashboard_id = '%s'"),
-               (LPCTSTR)dashboardId);
+               (LPCTSTR)safeDashboardId);
     if (!db.Execute(sql, outError))
         return FALSE;
 
     // 대시보드 삭제
-    sql.Format(_T("DELETE FROM dashboards WHERE id = '%s'"), (LPCTSTR)dashboardId);
+    sql.Format(_T("DELETE FROM dashboards WHERE id = '%s'"), (LPCTSTR)safeDashboardId);
     if (!db.Execute(sql, outError))
         return FALSE;
 

@@ -5,17 +5,19 @@
 
 #include "../../Common/Types.h"
 #include "AnalysisFlow.h"
+#include <atomic>   // std::atomic — 스레드 안전 상태 관리
 
 // 전방 선언 (Infrastructure 레이어 — .cpp에서 include)
 class LLMRouter;
 
 // Worker Thread 파라미터 구조체
 struct OrchestratorThreadParam {
-    const DataTable*   pData;       // 입력 데이터 (소유권 없음)
-    const DataSummary* pSummary;    // 데이터 요약 (소유권 없음)
-    CString            question;    // 사용자 질문
-    HWND               hNotifyWnd; // 진행/완료 통보 대상 윈도우
-    AnalysisFlow*      pFlow;       // 플로우 상태 (호출자가 소유)
+    const DataTable*      pData;          // 입력 데이터 (소유권 없음)
+    const DataSummary*    pSummary;       // 데이터 요약 (소유권 없음)
+    CString               question;       // 사용자 질문
+    HWND                  hNotifyWnd;    // 진행/완료 통보 대상 윈도우
+    AnalysisFlow*         pFlow;          // 플로우 상태 (호출자가 소유)
+    class AnalysisOrchestrator* pOrchestrator; // 취소 플래그 확인용 (소유권 없음)
 };
 
 // ============================================================
@@ -42,7 +44,10 @@ public:
     // 진행 중인 분석 취소 요청
     void CancelAnalysis();
 
-    // 현재 플로우 상태 조회
+    // 취소 여부 확인 (Worker Thread에서 호출)
+    BOOL IsCancelled() const { return m_bCancelled.load(); }
+
+    // 현재 플로우 상태 조회 (스레드 안전 — atomic 읽기)
     AnalysisFlowState GetCurrentState() const;
 
 private:
@@ -84,7 +89,7 @@ private:
                                 const CString&   toolParamsJson,
                                 const DataTable& data);
 
-    volatile BOOL      m_bCancelled;  // 취소 플래그 (Worker Thread에서 확인)
-    AnalysisFlowState  m_state;       // 현재 상태
-    CWinThread*        m_pThread;     // 실행 중인 Worker Thread
+    std::atomic<BOOL>             m_bCancelled;  // 취소 플래그 — 스레드 안전 atomic 읽기/쓰기
+    std::atomic<AnalysisFlowState> m_state;      // 현재 상태 — 스레드 안전 atomic 읽기/쓰기
+    CWinThread*                    m_pThread;    // 실행 중인 Worker Thread
 };

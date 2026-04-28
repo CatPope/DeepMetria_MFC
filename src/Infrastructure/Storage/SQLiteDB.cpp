@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "SQLiteDB.h"
 #include <sqlite3.h>
+#include "../../Common/StringUtils.h"
 
 // ============================================================
 // 싱글턴
@@ -308,15 +309,8 @@ BOOL SQLiteDB::UpdateDataSourceStatus(int id, const CString& status,
         SetDBError(outError, sqlite3_errmsg(m_pDB), _T("DB_PREPARE_FAILED")); return FALSE;
     }
 
-    auto toUTF8 = [](const CString& v) -> std::string {
-        int len = WideCharToMultiByte(CP_UTF8, 0, v, -1, nullptr, 0, nullptr, nullptr);
-        std::string u(len, '\0');
-        WideCharToMultiByte(CP_UTF8, 0, v, -1, &u[0], len, nullptr, nullptr);
-        return u;
-    };
-
-    std::string sStatus = toUTF8(status);
-    std::string sErr    = toUTF8(errorMessage);
+    std::string sStatus = StringUtils::ToUTF8(status);
+    std::string sErr    = StringUtils::ToUTF8(errorMessage);
     sqlite3_bind_text(stmt, 1, sStatus.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, sErr.c_str(),    -1, SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt,  3, id);
@@ -352,21 +346,14 @@ BOOL SQLiteDB::InsertDataSchema(int datasourceId, const CString& columnName,
         SetDBError(outError, sqlite3_errmsg(m_pDB), _T("DB_PREPARE_FAILED")); return FALSE;
     }
 
-    auto toUTF8 = [](const CString& v) -> std::string {
-        int len = WideCharToMultiByte(CP_UTF8, 0, v, -1, nullptr, 0, nullptr, nullptr);
-        std::string u(len, '\0');
-        WideCharToMultiByte(CP_UTF8, 0, v, -1, &u[0], len, nullptr, nullptr);
-        return u;
-    };
-
     sqlite3_bind_int(stmt,  1, datasourceId);
-    std::string sName = toUTF8(columnName);
+    std::string sName = StringUtils::ToUTF8(columnName);
     sqlite3_bind_text(stmt, 2, sName.c_str(),  -1, SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt,  3, columnIndex);
-    std::string sDtype = toUTF8(dtype);
+    std::string sDtype = StringUtils::ToUTF8(dtype);
     sqlite3_bind_text(stmt, 4, sDtype.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt,  5, nullable ? 1 : 0);
-    std::string sSample = toUTF8(sampleValues);
+    std::string sSample = StringUtils::ToUTF8(sampleValues);
     sqlite3_bind_text(stmt, 6, sSample.c_str(),-1, SQLITE_TRANSIENT);
 
     int rc = sqlite3_step(stmt);
@@ -416,19 +403,12 @@ BOOL SQLiteDB::InsertOrReplaceSummary(int datasourceId, const CString& domain,
         SetDBError(outError, sqlite3_errmsg(m_pDB), _T("DB_PREPARE_FAILED")); return FALSE;
     }
 
-    auto toUTF8 = [](const CString& v) -> std::string {
-        int len = WideCharToMultiByte(CP_UTF8, 0, v, -1, nullptr, 0, nullptr, nullptr);
-        std::string u(len, '\0');
-        WideCharToMultiByte(CP_UTF8, 0, v, -1, &u[0], len, nullptr, nullptr);
-        return u;
-    };
-
     sqlite3_bind_int(stmt, 1, datasourceId);
-    std::string sDomain = toUTF8(domain);
+    std::string sDomain = StringUtils::ToUTF8(domain);
     sqlite3_bind_text(stmt, 2, sDomain.c_str(),      -1, SQLITE_TRANSIENT);
-    std::string sDesc = toUTF8(description);
+    std::string sDesc = StringUtils::ToUTF8(description);
     sqlite3_bind_text(stmt, 3, sDesc.c_str(),         -1, SQLITE_TRANSIENT);
-    std::string sStats = toUTF8(statisticsJson);
+    std::string sStats = StringUtils::ToUTF8(statisticsJson);
     sqlite3_bind_text(stmt, 4, sStats.c_str(),        -1, SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt, 5, rowCount);
 
@@ -470,21 +450,14 @@ BOOL SQLiteDB::InsertAnalysis(int datasourceId, int dashboardId,
         SetDBError(outError, sqlite3_errmsg(m_pDB), _T("DB_PREPARE_FAILED")); return FALSE;
     }
 
-    auto toUTF8 = [](const CString& v) -> std::string {
-        int len = WideCharToMultiByte(CP_UTF8, 0, v, -1, nullptr, 0, nullptr, nullptr);
-        std::string u(len, '\0');
-        WideCharToMultiByte(CP_UTF8, 0, v, -1, &u[0], len, nullptr, nullptr);
-        return u;
-    };
-
     sqlite3_bind_int(stmt, 1, datasourceId);
     if (dashboardId > 0) sqlite3_bind_int(stmt, 2, dashboardId);
     else                 sqlite3_bind_null(stmt, 2);
-    std::string sQ = toUTF8(question);
+    std::string sQ = StringUtils::ToUTF8(question);
     sqlite3_bind_text(stmt, 3, sQ.c_str(),  -1, SQLITE_TRANSIENT);
-    std::string sProv = toUTF8(llmProvider);
+    std::string sProv = StringUtils::ToUTF8(llmProvider);
     sqlite3_bind_text(stmt, 4, sProv.c_str(),-1, SQLITE_TRANSIENT);
-    std::string sMod = toUTF8(llmModel);
+    std::string sMod = StringUtils::ToUTF8(llmModel);
     sqlite3_bind_text(stmt, 5, sMod.c_str(), -1, SQLITE_TRANSIENT);
 
     int rc = sqlite3_step(stmt);
@@ -507,16 +480,9 @@ BOOL SQLiteDB::UpdateAnalysisStatus(int flowId, const CString& status,
         SetDBError(outError, sqlite3_errmsg(m_pDB), _T("DB_PREPARE_FAILED")); return FALSE;
     }
 
-    auto toUTF8 = [](const CString& v) -> std::string {
-        int len = WideCharToMultiByte(CP_UTF8, 0, v, -1, nullptr, 0, nullptr, nullptr);
-        std::string u(len, '\0');
-        WideCharToMultiByte(CP_UTF8, 0, v, -1, &u[0], len, nullptr, nullptr);
-        return u;
-    };
-
-    std::string sStatus = toUTF8(status);
-    std::string sCot    = toUTF8(cotStepsJson);
-    std::string sTool   = toUTF8(toolCallsJson);
+    std::string sStatus = StringUtils::ToUTF8(status);
+    std::string sCot    = StringUtils::ToUTF8(cotStepsJson);
+    std::string sTool   = StringUtils::ToUTF8(toolCallsJson);
     sqlite3_bind_text(stmt, 1, sStatus.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, sCot.c_str(),    -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 3, sTool.c_str(),   -1, SQLITE_TRANSIENT);
@@ -641,21 +607,14 @@ BOOL SQLiteDB::InsertVisualization(int dashboardId, int flowId,
         SetDBError(outError, sqlite3_errmsg(m_pDB), _T("DB_PREPARE_FAILED")); return FALSE;
     }
 
-    auto toUTF8 = [](const CString& v) -> std::string {
-        int len = WideCharToMultiByte(CP_UTF8, 0, v, -1, nullptr, 0, nullptr, nullptr);
-        std::string u(len, '\0');
-        WideCharToMultiByte(CP_UTF8, 0, v, -1, &u[0], len, nullptr, nullptr);
-        return u;
-    };
-
     sqlite3_bind_int(stmt, 1, dashboardId);
     if (flowId > 0) sqlite3_bind_int(stmt, 2, flowId);
     else            sqlite3_bind_null(stmt, 2);
-    std::string sType  = toUTF8(vizType);
-    std::string sTitle = toUTF8(title);
-    std::string sConf  = toUTF8(chartConfigJson);
-    std::string sStyle = toUTF8(styleJson);
-    std::string sPos   = toUTF8(positionJson);
+    std::string sType  = StringUtils::ToUTF8(vizType);
+    std::string sTitle = StringUtils::ToUTF8(title);
+    std::string sConf  = StringUtils::ToUTF8(chartConfigJson);
+    std::string sStyle = StringUtils::ToUTF8(styleJson);
+    std::string sPos   = StringUtils::ToUTF8(positionJson);
     sqlite3_bind_text(stmt, 3, sType.c_str(),  -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 4, sTitle.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 5, sConf.c_str(),  -1, SQLITE_TRANSIENT);
@@ -711,15 +670,8 @@ BOOL SQLiteDB::SetSetting(const CString& key, const CString& value, AppError& ou
         SetDBError(outError, sqlite3_errmsg(m_pDB), _T("DB_PREPARE_FAILED")); return FALSE;
     }
 
-    auto toUTF8 = [](const CString& v) -> std::string {
-        int len = WideCharToMultiByte(CP_UTF8, 0, v, -1, nullptr, 0, nullptr, nullptr);
-        std::string u(len, '\0');
-        WideCharToMultiByte(CP_UTF8, 0, v, -1, &u[0], len, nullptr, nullptr);
-        return u;
-    };
-
-    std::string sKey = toUTF8(key);
-    std::string sVal = toUTF8(value);
+    std::string sKey = StringUtils::ToUTF8(key);
+    std::string sVal = StringUtils::ToUTF8(value);
     sqlite3_bind_text(stmt, 1, sKey.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, sVal.c_str(), -1, SQLITE_TRANSIENT);
 
@@ -730,12 +682,28 @@ BOOL SQLiteDB::SetSetting(const CString& key, const CString& value, AppError& ou
 }
 
 CString SQLiteDB::GetSetting(const CString& key, const CString& defaultValue) {
-    AppError err;
-    CString sql;
-    sql.Format(_T("SELECT value FROM app_settings WHERE key='%s';"), (LPCTSTR)key);
-    std::vector<std::vector<CString>> rows;
-    if (!Query(sql, rows, err) || rows.empty()) return defaultValue;
-    return rows[0][0];
+    if (!m_pDB) return defaultValue;
+
+    // SQL 인젝션 방지: sqlite3_prepare_v2 + bind_text 사용
+    const char* sql = "SELECT value FROM app_settings WHERE key=?;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_pDB, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return defaultValue;
+
+    std::string sKey = StringUtils::ToUTF8(key);
+    sqlite3_bind_text(stmt, 1, sKey.c_str(), -1, SQLITE_TRANSIENT);
+
+    CString result = defaultValue;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char* text = (const char*)sqlite3_column_text(stmt, 0);
+        if (text) {
+            int wlen = MultiByteToWideChar(CP_UTF8, 0, text, -1, nullptr, 0);
+            MultiByteToWideChar(CP_UTF8, 0, text, -1, result.GetBufferSetLength(wlen), wlen);
+            result.ReleaseBuffer();
+        }
+    }
+    sqlite3_finalize(stmt);
+    return result;
 }
 
 long long SQLiteDB::LastInsertRowId() const {

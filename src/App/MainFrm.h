@@ -34,13 +34,13 @@ protected:
     CSplitterWnd m_wndSplitter; // 3분할 Splitter
 
     // ---- 메시지 핸들러 ----
-    afx_msg int  OnCreate(LPCREATESTRUCT lpCreateStruct);
-    afx_msg void OnAnalysisProgress(WPARAM wParam, LPARAM lParam); // WM_ANALYSIS_PROGRESS
-    afx_msg void OnAnalysisDone(WPARAM wParam, LPARAM lParam);     // WM_ANALYSIS_DONE
-    afx_msg void OnVisualizationReady(WPARAM wParam, LPARAM lParam); // WM_VISUALIZATION_READY
-    afx_msg void OnDataLoaded(WPARAM wParam, LPARAM lParam);         // WM_DATA_LOADED
-    afx_msg void OnLlmResponse(WPARAM wParam, LPARAM lParam);        // WM_LLM_RESPONSE
-    afx_msg void OnExportComplete(WPARAM wParam, LPARAM lParam);     // WM_EXPORT_COMPLETE
+    afx_msg int     OnCreate(LPCREATESTRUCT lpCreateStruct);
+    afx_msg LRESULT OnAnalysisProgress(WPARAM wParam, LPARAM lParam);   // WM_ANALYSIS_PROGRESS
+    afx_msg LRESULT OnAnalysisDone(WPARAM wParam, LPARAM lParam);       // WM_ANALYSIS_DONE
+    afx_msg LRESULT OnVisualizationReady(WPARAM wParam, LPARAM lParam); // WM_VISUALIZATION_READY
+    afx_msg LRESULT OnDataLoaded(WPARAM wParam, LPARAM lParam);         // WM_DATA_LOADED
+    afx_msg LRESULT OnLlmResponse(WPARAM wParam, LPARAM lParam);        // WM_LLM_RESPONSE
+    afx_msg LRESULT OnExportComplete(WPARAM wParam, LPARAM lParam);     // WM_EXPORT_COMPLETE
 
     DECLARE_MESSAGE_MAP()
 };

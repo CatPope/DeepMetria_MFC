@@ -19,7 +19,6 @@
 #define WM_LLM_RESPONSE         (WM_USER + 104) // WPARAM: 0, LPARAM: CString 포인터 (응답 텍스트)
 #define WM_EXPORT_COMPLETE      (WM_USER + 105) // WPARAM: 성공(1)/실패(0), LPARAM: 0
 #define WM_COT_STEP             (WM_USER + 106) // WPARAM: 0, LPARAM: CotStep 포인터 (수신 측에서 delete)
-#define WM_ANALYSIS_COMPLETE    (WM_USER + 107) // WPARAM: flowId, LPARAM: 0
 #define WM_IMPORT_PROGRESS      (WM_USER + 108) // WPARAM: 진행률(0-100), LPARAM: 0
 #define WM_USER_QUOTA_UPDATED   (WM_USER + 109) // WPARAM: 0, LPARAM: 0
 #define WM_IMPORT_COMPLETE      (WM_USER + 110) // WPARAM: datasourceId, LPARAM: 0
@@ -82,9 +81,10 @@ struct ColumnSchema {
     CString name;
     CString type;       // "numeric", "text", "date"
     int     nullCount;
+    int     index;      // 컬럼 인덱스 (0-based)
     CString sampleValues; // 콤마 구분 샘플
 
-    ColumnSchema() : nullCount(0) {}
+    ColumnSchema() : nullCount(0), index(0) {}
 };
 
 struct DataSummary {
@@ -273,3 +273,19 @@ struct UserState {
 
     UserState() : bActivated(FALSE) {}
 };
+
+// ============================================================
+// std::hash<CString> 특수화 — unordered_map/set 키 사용 지원
+// ============================================================
+namespace std {
+    template<>
+    struct hash<CString> {
+        size_t operator()(const CString& str) const {
+            size_t h = 0;
+            for (int i = 0; i < str.GetLength(); i++) {
+                h = h * 31 + str[i];
+            }
+            return h;
+        }
+    };
+}

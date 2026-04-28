@@ -36,13 +36,21 @@
 #define IDC_EDIT_EXPORT_PATH        1031
 #define IDC_BUTTON_BROWSE           1032
 
+// QueryInput 폼 다이얼로그 및 컨트롤 ID
+// IDD_QUERYINPUT_FORM: 130은 IDR_MENU_MAINFRAME과 충돌하므로 140 사용
+#define IDD_QUERYINPUT_FORM         140
+// IDC_EDIT_QUERY(1010), IDC_BUTTON_SEND(1011), IDC_LIST_HISTORY(1012)는 기존 정의 재사용
+#define IDC_BTN_ANALYZE             1033  // 1011=IDC_BUTTON_SEND 충돌 회피
+#define IDC_STATIC_STATUS           1034  // 1012=IDC_LIST_HISTORY 충돌 회피
+#define IDC_PROGRESS_BAR            1013
+
 // 상태바 인디케이터 ID
 #define ID_INDICATOR_STATUS         0xE700
 #define ID_INDICATOR_PROGRESS       0xE701
 
 // 다음 기본 ID 값 (Visual Studio 리소스 편집기 자동 관리)
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE    131
+#define _APS_NEXT_RESOURCE_VALUE    141
 #define _APS_NEXT_COMMAND_VALUE     32810
 #define _APS_NEXT_CONTROL_VALUE     1040
 #define _APS_NEXT_SYMED_VALUE       104

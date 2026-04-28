@@ -21,6 +21,9 @@ public:
     // GDI+ 토큰 (InitInstance에서 초기화, ExitInstance에서 해제)
     ULONG_PTR m_gdiplusToken;
 
+    // 메시지 핸들러
+    afx_msg void OnAppAbout();
+
     DECLARE_MESSAGE_MAP()
 };
 

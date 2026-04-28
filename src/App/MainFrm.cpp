@@ -4,6 +4,9 @@
 #include "../stdafx.h"
 #include "MainFrm.h"
 #include "../Resources/resource.h"
+#include "../View/DataSummaryView.h"
+#include "../View/DashboardView.h"
+#include "../View/QueryInputView.h"
 
 // ============================================================
 // IMPLEMENT_DYNCREATE
@@ -116,9 +119,8 @@ BOOL CMainFrame::OnCreateClient(LPCREATESTRUCT lpcs, CCreateContext* pContext)
     }
 
     // 좌측 패널: DataSummaryView (열 0)
-    // 스켈레톤 단계: CView 기본 클래스로 대체 (실제 View 구현 후 교체)
     if (!m_wndSplitter.CreateView(0, 0,
-            RUNTIME_CLASS(CView), CSize(280, 600), pContext))
+            RUNTIME_CLASS(CDataSummaryView), CSize(280, 600), pContext))
     {
         TRACE0("DataSummaryView 생성 실패\n");
         return FALSE;
@@ -137,7 +139,7 @@ BOOL CMainFrame::OnCreateClient(LPCREATESTRUCT lpcs, CCreateContext* pContext)
 
     // 우상단: DashboardView (행 0)
     if (!pRightSplitter->CreateView(0, 0,
-            RUNTIME_CLASS(CView), CSize(900, 450), pContext))
+            RUNTIME_CLASS(CDashboardView), CSize(900, 450), pContext))
     {
         TRACE0("DashboardView 생성 실패\n");
         return FALSE;
@@ -145,7 +147,7 @@ BOOL CMainFrame::OnCreateClient(LPCREATESTRUCT lpcs, CCreateContext* pContext)
 
     // 우하단: QueryInputView (행 1)
     if (!pRightSplitter->CreateView(1, 0,
-            RUNTIME_CLASS(CView), CSize(900, 150), pContext))
+            RUNTIME_CLASS(CQueryInputView), CSize(900, 150), pContext))
     {
         TRACE0("QueryInputView 생성 실패\n");
         return FALSE;

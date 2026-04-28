@@ -109,11 +109,16 @@ BOOL DataSummarizer::DoSummarize(const DataTable& data,
     // 4. LLM에 스키마 + 통계 전송하여 자연어 요약 생성
     CString prompt = BuildSummaryPrompt(data, statsJson);
 
-    LLMRouter llmRouter;
-    AppError  llmError;
-    CString   llmResponse;
+    LLMRouter& llmRouter = LLMRouter::Instance();
+    AppError   llmError;
+    CString    llmResponse;
 
-    if (!llmRouter.Chat(prompt, llmResponse, llmError)) {
+    // systemPrompt: 역할 지시, userMessage: 데이터셋 정보
+    CString systemPrompt =
+        _T("당신은 DeepMetria의 데이터셋 요약 전문가입니다.\n")
+        _T("주어진 데이터셋 정보를 분석하여 한국어로 간결하게 요약해주세요.");
+
+    if (!llmRouter.Chat(systemPrompt, prompt, llmResponse, llmError)) {
         // LLM 실패 시 기본 요약 텍스트 사용 (치명적 오류 아님)
         outSummary.aiSummaryText.Format(
             _T("데이터셋 요약: %d행 %d열. LLM 요약 생성 실패."),

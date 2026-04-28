@@ -186,8 +186,9 @@ CString LLMRouter::EncryptDPAPI(const CString& plainText) {
     DATA_BLOB input  = { (DWORD)u8buf.size(), u8buf.data() };
     DATA_BLOB output = { 0, nullptr };
 
+    // 플래그 0: 현재 사용자 계정에서만 복호화 가능 (LOCAL_MACHINE 제거로 보안 강화)
     if (!CryptProtectData(&input, L"DeepMetria", nullptr, nullptr, nullptr,
-                          CRYPTPROTECT_LOCAL_MACHINE, &output)) {
+                          0, &output)) {
         return _T("");
     }
 
@@ -219,8 +220,9 @@ CString LLMRouter::DecryptDPAPI(const CString& cipherB64) {
     DATA_BLOB input  = { binLen, binBuf.data() };
     DATA_BLOB output = { 0, nullptr };
 
+    // 플래그 0: 현재 사용자 계정에서만 복호화 가능 (LOCAL_MACHINE 제거로 보안 강화)
     if (!CryptUnprotectData(&input, nullptr, nullptr, nullptr, nullptr,
-                            CRYPTPROTECT_LOCAL_MACHINE, &output)) {
+                            0, &output)) {
         return _T("");
     }
 

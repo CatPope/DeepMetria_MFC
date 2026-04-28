@@ -115,6 +115,20 @@ BEGIN
 END
 
 // ============================================================
+// QueryInput 폼 다이얼로그 (IDD_QUERYINPUT_FORM)
+// ============================================================
+IDD_QUERYINPUT_FORM DIALOGEX 0, 0, 500, 60
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD | WS_VISIBLE
+FONT 9, "굴림", 400, 0, 0x1
+BEGIN
+    EDITTEXT        IDC_EDIT_QUERY,    4,  8, 380, 14, ES_AUTOHSCROLL
+    PUSHBUTTON      "분석(&A)",        IDC_BTN_ANALYZE,   390,  6, 50, 18
+    LTEXT           "",                IDC_STATIC_STATUS,   4, 30, 380,  8
+    CONTROL         "",                IDC_PROGRESS_BAR, "msctls_progress32",
+                    WS_CHILD | WS_VISIBLE, 4, 42, 380, 10
+END
+
+// ============================================================
 // 문자열 테이블
 // ============================================================
 STRINGTABLE

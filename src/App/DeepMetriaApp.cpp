@@ -6,9 +6,11 @@
 #include "MainFrm.h"
 #include "../Document/DeepMetriaDoc.h"
 #include "../Resources/resource.h"
-
-// View 전방 선언 (헤더 include 최소화)
-class CDashboardView;
+#include "../Infrastructure/Storage/SQLiteDB.h"
+#include "../Infrastructure/Cache/AnalysisCache.h"
+#include <shlobj.h>   // SHGetFolderPath, SHCreateDirectoryEx
+#include <shlwapi.h>  // PathIsDirectory
+#pragma comment(lib, "shlwapi.lib")
 
 // ============================================================
 // theApp 전역 인스턴스
@@ -16,12 +18,17 @@ class CDashboardView;
 CDeepMetriaApp theApp;
 
 // ============================================================
+// 전역 AnalysisCache 인스턴스
+// ============================================================
+static AnalysisCache g_analysisCache;
+
+// ============================================================
 // CDeepMetriaApp
 // ============================================================
 
 BEGIN_MESSAGE_MAP(CDeepMetriaApp, CWinApp)
     ON_COMMAND(ID_FILE_OPEN_DATA, &CWinApp::OnFileOpen)
-    ON_COMMAND(ID_HELP_ABOUT,     OnAppAbout)
+    ON_COMMAND(ID_HELP_ABOUT,     &CDeepMetriaApp::OnAppAbout)
 END_MESSAGE_MAP()
 
 CDeepMetriaApp::CDeepMetriaApp()
@@ -40,8 +47,40 @@ BOOL CDeepMetriaApp::InitInstance()
     Gdiplus::GdiplusStartup(&m_gdiplusToken, &gdiplusInput, nullptr);
 
     // ---- SQLite DB 초기화 ----
-    // SQLiteDB::GetInstance().Initialize() — 스켈레톤 단계에서 전방 선언만 유지
-    // (Infrastructure/Storage/SQLiteDB.h 구현 후 연결)
+    // %APPDATA%\DeepMetria\deepmetria.db 경로 구성, 폴더 자동 생성
+    {
+        TCHAR szAppData[MAX_PATH] = {};
+        if (SUCCEEDED(SHGetFolderPath(nullptr, CSIDL_APPDATA, nullptr, 0, szAppData)))
+        {
+            CString dbDir;
+            dbDir.Format(_T("%s\\DeepMetria"), szAppData);
+
+            // 폴더가 없으면 생성
+            if (!PathIsDirectory(dbDir))
+                SHCreateDirectoryEx(nullptr, dbDir, nullptr);
+
+            CString dbPath;
+            dbPath.Format(_T("%s\\deepmetria.db"), dbDir);
+
+            AppError dbError;
+            if (!SQLiteDB::Instance().Initialize(dbPath, dbError))
+            {
+                AfxMessageBox(
+                    CString(_T("데이터베이스 초기화 실패: ")) + dbError.message,
+                    MB_ICONERROR | MB_OK);
+                return FALSE;
+            }
+        }
+        else
+        {
+            AfxMessageBox(_T("APPDATA 경로를 가져올 수 없습니다."),
+                          MB_ICONERROR | MB_OK);
+            return FALSE;
+        }
+    }
+
+    // ---- AnalysisCache 초기화 ----
+    g_analysisCache.Clear();
 
     // ---- 공통 컨트롤 초기화 ----
     INITCOMMONCONTROLSEX icex;
@@ -82,8 +121,8 @@ BOOL CDeepMetriaApp::InitInstance()
 int CDeepMetriaApp::ExitInstance()
 {
     // ---- DB / 캐시 정리 ----
-    // SQLiteDB::GetInstance().Close();
-    // AnalysisCache::GetInstance().Clear();
+    SQLiteDB::Instance().Close();
+    g_analysisCache.Clear();
 
     // ---- GDI+ 종료 ----
     if (m_gdiplusToken != 0)
@@ -97,7 +136,7 @@ int CDeepMetriaApp::ExitInstance()
 
 // ---- About 박스 ----
 // IDD_ABOUTBOX 다이얼로그는 리소스에 정의됨
-void OnAppAbout()
+void CDeepMetriaApp::OnAppAbout()
 {
     CDialog dlg(IDD_ABOUTBOX);
     dlg.DoModal();

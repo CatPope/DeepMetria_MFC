@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "ClaudeProvider.h"
 #include <curl/curl.h>
+#include "../../Common/StringUtils.h"
 
 // ============================================================
 // 상수
@@ -13,13 +14,9 @@ const int   ClaudeProvider::TIMEOUT_SEC = 30;
 // 생성자 / 소멸자
 // ============================================================
 
-ClaudeProvider::ClaudeProvider() {
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-}
+ClaudeProvider::ClaudeProvider() {}
 
-ClaudeProvider::~ClaudeProvider() {
-    curl_global_cleanup();
-}
+ClaudeProvider::~ClaudeProvider() {}
 
 // ============================================================
 // Chat — 단순 system+user 동기 호출
@@ -32,20 +29,20 @@ BOOL ClaudeProvider::Chat(const CString& systemPrompt,
                            AppError&      outError) {
     outError.Clear();
 
-    std::string sSystem = CStringToUTF8(systemPrompt);
-    std::string sUser   = CStringToUTF8(userMessage);
+    std::string sSystem = StringUtils::ToUTF8(systemPrompt);
+    std::string sUser   = StringUtils::ToUTF8(userMessage);
     std::string sModel  = model.IsEmpty()
                           ? "claude-opus-4-5"
-                          : CStringToUTF8(model);
-    std::string sApiKey = CStringToUTF8(m_apiKey);
+                          : StringUtils::ToUTF8(model);
+    std::string sApiKey = StringUtils::ToUTF8(m_apiKey);
 
     // 요청 JSON 구성
     // {"model":"...","max_tokens":4096,"system":"...","messages":[{"role":"user","content":"..."}]}
     std::string body =
-        "{\"model\":\"" + JsonEscape(sModel) + "\","
+        "{\"model\":\"" + StringUtils::JsonEscape(sModel) + "\","
         "\"max_tokens\":4096,"
-        "\"system\":\"" + JsonEscape(sSystem) + "\","
-        "\"messages\":[{\"role\":\"user\",\"content\":\"" + JsonEscape(sUser) + "\"}]}";
+        "\"system\":\"" + StringUtils::JsonEscape(sSystem) + "\","
+        "\"messages\":[{\"role\":\"user\",\"content\":\"" + StringUtils::JsonEscape(sUser) + "\"}]}";
 
     std::string responseBody;
     if (!PostRequest(API_URL, body, sApiKey, responseBody, outError)) return FALSE;
@@ -66,8 +63,8 @@ BOOL ClaudeProvider::ChatWithHistory(const std::vector<ChatMessage>& messages,
         return FALSE;
     }
 
-    std::string sModel  = model.IsEmpty() ? "claude-opus-4-5" : CStringToUTF8(model);
-    std::string sApiKey = CStringToUTF8(m_apiKey);
+    std::string sModel  = model.IsEmpty() ? "claude-opus-4-5" : StringUtils::ToUTF8(model);
+    std::string sApiKey = StringUtils::ToUTF8(m_apiKey);
 
     // system 메시지 분리, 나머지는 messages 배열로
     std::string systemText;
@@ -75,22 +72,22 @@ BOOL ClaudeProvider::ChatWithHistory(const std::vector<ChatMessage>& messages,
     bool first = true;
 
     for (const auto& msg : messages) {
-        std::string role = CStringToUTF8(msg.role);
+        std::string role = StringUtils::ToUTF8(msg.role);
         if (role == "system") {
-            systemText = CStringToUTF8(msg.content);
+            systemText = StringUtils::ToUTF8(msg.content);
             continue;
         }
         if (!first) messagesJson += ",";
-        messagesJson += "{\"role\":\"" + JsonEscape(role) + "\","
-                        "\"content\":\"" + JsonEscape(CStringToUTF8(msg.content)) + "\"}";
+        messagesJson += "{\"role\":\"" + StringUtils::JsonEscape(role) + "\","
+                        "\"content\":\"" + StringUtils::JsonEscape(StringUtils::ToUTF8(msg.content)) + "\"}";
         first = false;
     }
     messagesJson += "]";
 
     std::string body =
-        "{\"model\":\"" + JsonEscape(sModel) + "\","
+        "{\"model\":\"" + StringUtils::JsonEscape(sModel) + "\","
         "\"max_tokens\":4096,"
-        "\"system\":\"" + JsonEscape(systemText) + "\","
+        "\"system\":\"" + StringUtils::JsonEscape(systemText) + "\","
         "\"messages\":" + messagesJson + "}";
 
     std::string responseBody;
@@ -143,7 +140,7 @@ BOOL ClaudeProvider::PostRequest(const std::string& url,
 
     if (res != CURLE_OK) {
         CString msg;
-        msg.Format(_T("HTTP 요청 실패: %s"), UTF8ToCString(curl_easy_strerror(res)).GetString());
+        msg.Format(_T("HTTP 요청 실패: %s"), StringUtils::FromUTF8(curl_easy_strerror(res)).GetString());
         outError.Set(_T("HTTP_REQUEST_FAILED"), msg);
         return FALSE;
     }
@@ -151,7 +148,7 @@ BOOL ClaudeProvider::PostRequest(const std::string& url,
     if (httpCode != 200) {
         CString msg;
         msg.Format(_T("Claude API 오류 (HTTP %ld): %s"),
-                   httpCode, UTF8ToCString(outBody).GetString());
+                   httpCode, StringUtils::FromUTF8(outBody).GetString());
         outError.Set(_T("API_ERROR"), msg);
         return FALSE;
     }
@@ -199,7 +196,7 @@ BOOL ClaudeProvider::ParseResponse(const std::string& jsonBody,
         // 에러 응답 파싱 시도
         std::string errMsg = findStr("message", 0);
         if (errMsg.empty()) errMsg = jsonBody;
-        outError.Set(_T("PARSE_ERROR"), UTF8ToCString(errMsg));
+        outError.Set(_T("PARSE_ERROR"), StringUtils::FromUTF8(errMsg));
         return FALSE;
     }
 
@@ -216,7 +213,7 @@ BOOL ClaudeProvider::ParseResponse(const std::string& jsonBody,
         return FALSE;
     }
 
-    outText = UTF8ToCString(text);
+    outText = StringUtils::FromUTF8(text);
     return TRUE;
 }
 
@@ -235,7 +232,7 @@ size_t ClaudeProvider::WriteCallback(void* contents, size_t size, size_t nmemb, 
 // 문자열 변환 헬퍼
 // ============================================================
 
-std::string ClaudeProvider::CStringToUTF8(const CString& str) {
+std::string ClaudeProvider::StringUtils::ToUTF8(const CString& str) {
     if (str.IsEmpty()) return "";
     int len = WideCharToMultiByte(CP_UTF8, 0, str, -1, nullptr, 0, nullptr, nullptr);
     std::string result(len, '\0');
@@ -244,7 +241,7 @@ std::string ClaudeProvider::CStringToUTF8(const CString& str) {
     return result;
 }
 
-CString ClaudeProvider::UTF8ToCString(const std::string& utf8) {
+CString ClaudeProvider::StringUtils::FromUTF8(const std::string& utf8) {
     if (utf8.empty()) return _T("");
     int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0);
     CString result;
@@ -253,7 +250,7 @@ CString ClaudeProvider::UTF8ToCString(const std::string& utf8) {
     return result;
 }
 
-std::string ClaudeProvider::JsonEscape(const std::string& s) {
+std::string ClaudeProvider::StringUtils::JsonEscape(const std::string& s) {
     std::string out;
     out.reserve(s.size());
     for (char c : s) {
