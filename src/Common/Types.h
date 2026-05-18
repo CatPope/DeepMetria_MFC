@@ -3,7 +3,8 @@
 // DeepMetria 공용 타입 정의
 // DetailedSpec §1.1, §9 참조
 
-#include <afxwin.h>
+// CString, BOOL 등 MFC 기본 타입은 stdafx.h(afxwin.h)가 먼저 로드됨
+// PCH 경계 이후 afxwin.h 재포함 금지 — stdafx.h에서 Types.h를 include하여 순서 보장
 #include <vector>
 #include <map>
 #include <string>
@@ -187,9 +188,9 @@ struct DataSourceInfo {
     CString fileType;   // "csv", "xlsx"
     CString status;     // "importing", "ready", "error"
     int     rowCount;
-    CTime   createdAt;
+    time_t  createdAt;  // Unix timestamp (CTime 대신 — afxwin.h 파싱 순서 무관)
 
-    DataSourceInfo() : rowCount(0) {}
+    DataSourceInfo() : rowCount(0), createdAt(0) {}
 };
 
 struct DataSourceDetail {
@@ -213,7 +214,9 @@ struct DashboardInfo {
     CString id;
     CString name;
     CString datasourceId;
-    CTime   createdAt;
+    time_t  createdAt;  // Unix timestamp (CTime 대신 — afxwin.h 파싱 순서 무관)
+
+    DashboardInfo() : createdAt(0) {}
 };
 
 struct DashboardDetail {
@@ -274,18 +277,6 @@ struct UserState {
     UserState() : bActivated(FALSE) {}
 };
 
-// ============================================================
-// std::hash<CString> 특수화 — unordered_map/set 키 사용 지원
-// ============================================================
-namespace std {
-    template<>
-    struct hash<CString> {
-        size_t operator()(const CString& str) const {
-            size_t h = 0;
-            for (int i = 0; i < str.GetLength(); i++) {
-                h = h * 31 + str[i];
-            }
-            return h;
-        }
-    };
-}
+// std::hash<CString> 특수화는 stdafx.h 하단으로 이동됨
+// MFC 환경에서 Types.h 안에 namespace std 재열기를 두면
+// MSVC 파서가 ToolCall 구조체 컨텍스트 오염을 일으키므로 분리함

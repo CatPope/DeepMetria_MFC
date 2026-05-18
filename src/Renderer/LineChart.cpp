@@ -197,7 +197,7 @@ void CLineChart::Draw(Graphics& g, const CRect& plotArea, const ChartConfig& con
     std::vector<Color> palette = CChartRenderer::GetColorPalette();
 
     FontFamily ff(L"맑은 고딕");
-    Font labelFont(&ff, 9,  FontStyleRegular, UnitPoint);
+    Gdiplus::Font labelFont(&ff, 9,  FontStyleRegular, UnitPoint);
 
     REAL plotL = (REAL)plotArea.left;
     REAL plotT = (REAL)plotArea.top;

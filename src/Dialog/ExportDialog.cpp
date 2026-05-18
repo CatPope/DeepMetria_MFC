@@ -1,4 +1,4 @@
-#include "../stdafx.h"
+#include "stdafx.h"
 #include "ExportDialog.h"
 
 // GDI+ (PNG/BMP 내보내기)

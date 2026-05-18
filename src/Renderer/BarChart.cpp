@@ -145,8 +145,8 @@ int CBarChart::CalcTickCount(double niceMax)
 // 값 레이블 그리기
 // ============================================================
 
-void CBarChart::DrawValueLabel(Graphics& g, double value,
-                               REAL cx, REAL top, const Font& font)
+void CBarChart::DrawValueLabel(Gdiplus::Graphics& g, double value,
+                               Gdiplus::REAL cx, Gdiplus::REAL top, const Gdiplus::Font& font)
 {
     SolidBrush brush(Color(50, 50, 50));
     wchar_t buf[32];
@@ -198,8 +198,8 @@ void CBarChart::Draw(Graphics& g, const CRect& plotArea, const ChartConfig& conf
     std::vector<Color> palette = CChartRenderer::GetColorPalette();
 
     FontFamily ff(L"맑은 고딕");
-    Font labelFont(&ff, 9,  FontStyleRegular, UnitPoint);
-    Font valueFont(&ff, 8,  FontStyleRegular, UnitPoint);
+    Gdiplus::Font labelFont(&ff, 9,  FontStyleRegular, UnitPoint);
+    Gdiplus::Font valueFont(&ff, 8,  FontStyleRegular, UnitPoint);
 
     REAL plotW = (REAL)plotArea.Width();
     REAL plotH = (REAL)plotArea.Height();

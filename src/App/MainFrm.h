@@ -3,7 +3,6 @@
 // MainFrm.h — CMainFrame 선언
 // 툴바, 상태바, CSplitterWnd 3분할 레이아웃 담당
 
-#include "../stdafx.h"
 #include "../Common/Types.h"
 
 // ============================================================

@@ -1,7 +1,7 @@
 // MainFrm.cpp — CMainFrame 구현
 // 툴바, 상태바, CSplitterWnd 3분할 레이아웃 생성 및 커스텀 메시지 처리
 
-#include "../stdafx.h"
+#include "stdafx.h"
 #include "MainFrm.h"
 #include "../Resources/resource.h"
 #include "../View/DataSummaryView.h"

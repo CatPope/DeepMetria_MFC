@@ -1,4 +1,4 @@
-#include "../stdafx.h"
+#include "stdafx.h"
 #include "SettingsDialog.h"
 
 #include <wincrypt.h>  // DPAPI (CryptProtectData / CryptUnprotectData)

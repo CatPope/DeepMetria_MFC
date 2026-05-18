@@ -4,7 +4,8 @@
 // DPAPI로 암호화하여 레지스트리에 저장
 // Architecture §3 / DetailedSpec §3.3 참조
 
-#include "../stdafx.h"
+// afxwin.h와 Types.h는 stdafx.h(PCH)에서 이미 포함됨
+#include "../Resources/resource.h"
 
 // ============================================================
 // CSettingsDialog — CDialogEx 파생

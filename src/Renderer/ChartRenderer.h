@@ -3,12 +3,9 @@
 // ChartRenderer.h — GDI+ 차트 렌더링 팩토리/디스패처
 // Architecture §3 Renderer 레이어, DetailedSpec §6 참조
 
-#include "../stdafx.h"
 #include "../Common/Types.h"
 #include <gdiplus.h>
 #include <vector>
-
-using namespace Gdiplus;
 
 // ============================================================
 // CChartRenderer — 차트 렌더링 팩토리 (정적 메서드 집합)
@@ -27,23 +24,23 @@ public:
     // --------------------------------------------------------
 
     // 차트 제목 그리기 (상단 중앙, 14pt)
-    static void DrawTitle(Graphics& g, const CRect& rect, const CString& title);
+    static void DrawTitle(Gdiplus::Graphics& g, const CRect& rect, const CString& title);
 
     // 범례 그리기 (우측, 10pt)
-    static void DrawLegend(Graphics& g, const CRect& rect,
+    static void DrawLegend(Gdiplus::Graphics& g, const CRect& rect,
                            const std::vector<CString>& names,
-                           const std::vector<Color>& colors);
+                           const std::vector<Gdiplus::Color>& colors);
 
     // 격자선 그리기 (플롯 영역 내부)
-    static void DrawGridLines(Graphics& g, const CRect& plotArea,
+    static void DrawGridLines(Gdiplus::Graphics& g, const CRect& plotArea,
                               int xCount, int yCount);
 
     // X축/Y축 레이블 그리기
-    static void DrawAxisLabels(Graphics& g, const CRect& plotArea,
+    static void DrawAxisLabels(Gdiplus::Graphics& g, const CRect& plotArea,
                                const CString& xLabel, const CString& yLabel);
 
     // 12색 기본 팔레트 반환
-    static std::vector<Color> GetColorPalette();
+    static std::vector<Gdiplus::Color> GetColorPalette();
 
     // 여백 제외한 플롯 영역 계산
     // 여백: 상=50(제목), 하=60(X축), 좌=70(Y축), 우=150(범례)

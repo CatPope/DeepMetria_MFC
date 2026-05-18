@@ -79,7 +79,7 @@ void CChartRenderer::Render(CDC* pDC, const CRect& rect, const ChartConfig& conf
     {
         // 알 수 없는 차트 타입 — 오류 텍스트 표시
         FontFamily ff(L"맑은 고딕");
-        Font font(&ff, 12, FontStyleRegular, UnitPoint);
+        Gdiplus::Font font(&ff, 12, FontStyleRegular, UnitPoint);
         SolidBrush brush(Color(200, 0, 0));
         CString msg = _T("알 수 없는 차트 유형: ") + config.chartType;
         g.DrawString(msg, -1, &font,
@@ -180,10 +180,10 @@ void CChartRenderer::RenderToFile(const CString& filePath, int width, int height
 // 공용 유틸리티
 // ============================================================
 
-void CChartRenderer::DrawTitle(Graphics& g, const CRect& rect, const CString& title)
+void CChartRenderer::DrawTitle(Gdiplus::Graphics& g, const CRect& rect, const CString& title)
 {
     FontFamily ff(L"맑은 고딕");
-    Font font(&ff, 14, FontStyleBold, UnitPoint);
+    Gdiplus::Font font(&ff, 14, FontStyleBold, UnitPoint);
     SolidBrush brush(Color(50, 50, 50));
 
     // 문자열 크기 측정 후 중앙 정렬
@@ -196,15 +196,15 @@ void CChartRenderer::DrawTitle(Graphics& g, const CRect& rect, const CString& ti
     g.DrawString(title, -1, &font, layoutRect, &sf, &brush);
 }
 
-void CChartRenderer::DrawLegend(Graphics& g, const CRect& rect,
+void CChartRenderer::DrawLegend(Gdiplus::Graphics& g, const CRect& rect,
                                  const std::vector<CString>& names,
-                                 const std::vector<Color>& colors)
+                                 const std::vector<Gdiplus::Color>& colors)
 {
     if (names.empty())
         return;
 
     FontFamily ff(L"맑은 고딕");
-    Font font(&ff, 10, FontStyleRegular, UnitPoint);
+    Gdiplus::Font font(&ff, 10, FontStyleRegular, UnitPoint);
     SolidBrush textBrush(Color(50, 50, 50));
 
     // 범례 시작 위치 (우측 여백)
@@ -231,7 +231,7 @@ void CChartRenderer::DrawLegend(Graphics& g, const CRect& rect,
     }
 }
 
-void CChartRenderer::DrawGridLines(Graphics& g, const CRect& plotArea,
+void CChartRenderer::DrawGridLines(Gdiplus::Graphics& g, const CRect& plotArea,
                                     int xCount, int yCount)
 {
     Pen gridPen(Color(200, 200, 200), 1.0f);
@@ -263,11 +263,11 @@ void CChartRenderer::DrawGridLines(Graphics& g, const CRect& plotArea,
     }
 }
 
-void CChartRenderer::DrawAxisLabels(Graphics& g, const CRect& rect,
+void CChartRenderer::DrawAxisLabels(Gdiplus::Graphics& g, const CRect& rect,
                                      const CString& xLabel, const CString& yLabel)
 {
     FontFamily ff(L"맑은 고딕");
-    Font font(&ff, 9, FontStyleRegular, UnitPoint);
+    Gdiplus::Font font(&ff, 9, FontStyleRegular, UnitPoint);
     SolidBrush brush(Color(80, 80, 80));
 
     // X축 레이블 — 하단 중앙

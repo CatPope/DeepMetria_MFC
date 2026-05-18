@@ -1,7 +1,7 @@
 // DeepMetriaApp.cpp — CDeepMetriaApp 구현
 // 앱 초기화(InitInstance), 정리(ExitInstance) 담당
 
-#include "../stdafx.h"
+#include "stdafx.h"
 #include "DeepMetriaApp.h"
 #include "MainFrm.h"
 #include "../Document/DeepMetriaDoc.h"

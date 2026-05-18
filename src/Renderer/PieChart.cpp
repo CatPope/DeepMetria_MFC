@@ -108,9 +108,9 @@ void CPieChart::MergeSmallSlices(std::vector<double>& values,
 // 조각 퍼센트 레이블
 // ============================================================
 
-void CPieChart::DrawSliceLabel(Graphics& g, REAL cx, REAL cy,
-                                REAL radius, REAL startAngle, REAL sweepAngle,
-                                double percent, const Font& font)
+void CPieChart::DrawSliceLabel(Gdiplus::Graphics& g, Gdiplus::REAL cx, Gdiplus::REAL cy,
+                                Gdiplus::REAL radius, Gdiplus::REAL startAngle, Gdiplus::REAL sweepAngle,
+                                double percent, const Gdiplus::Font& font)
 {
     // 조각 중앙 각도
     const REAL PI = 3.14159265f;
@@ -182,7 +182,7 @@ void CPieChart::Draw(Graphics& g, const CRect& plotArea, const ChartConfig& conf
     std::vector<Color> palette = CChartRenderer::GetColorPalette();
 
     FontFamily ff(L"맑은 고딕");
-    Font labelFont(&ff, 10, FontStyleRegular, UnitPoint);
+    Gdiplus::Font labelFont(&ff, 10, FontStyleRegular, UnitPoint);
 
     // 파이 영역 계산 (범례 공간 제외, 정사각형으로)
     REAL plotW = (REAL)plotArea.Width();

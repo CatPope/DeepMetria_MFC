@@ -4,7 +4,6 @@
 // DashboardView에서 카드 더블클릭 시 상세 보기
 // Architecture §3 / DetailedSpec §3.2 참조
 
-#include "../stdafx.h"
 #include "../Common/Types.h"
 
 // 전방 선언

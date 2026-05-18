@@ -3,12 +3,9 @@
 // BarChart.h — 수직 막대 차트 렌더러
 // Architecture §3 Renderer 레이어, DetailedSpec §6 참조
 
-#include "../stdafx.h"
 #include "../Common/Types.h"
 #include <gdiplus.h>
 #include <vector>
-
-using namespace Gdiplus;
 
 // ============================================================
 // CBarChart — 수직 막대 차트 (정적 렌더러)
@@ -20,7 +17,7 @@ public:
     // g        : GDI+ Graphics 객체
     // plotArea : 플롯 영역 (CalcPlotArea로 계산된 값)
     // config   : 차트 설정 (ChartConfig.dataJson에 데이터 포함)
-    static void Draw(Graphics& g, const CRect& plotArea, const ChartConfig& config);
+    static void Draw(Gdiplus::Graphics& g, const CRect& plotArea, const ChartConfig& config);
 
 private:
     // JSON에서 datasets 파싱
@@ -36,6 +33,6 @@ private:
     static int CalcTickCount(double niceMax);
 
     // 바 위에 값 레이블 그리기
-    static void DrawValueLabel(Graphics& g, double value,
-                               REAL cx, REAL top, const Font& font);
+    static void DrawValueLabel(Gdiplus::Graphics& g, double value,
+                               Gdiplus::REAL cx, Gdiplus::REAL top, const Gdiplus::Font& font);
 };

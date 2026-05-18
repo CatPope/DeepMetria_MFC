@@ -582,9 +582,9 @@ CString AnalysisTools::PivotTable(const DataTable& data,
     std::map<CString, std::map<CString, std::vector<double>>> cells;
     std::map<CString, int> colHeaders;
 
-    int n = min({(int)data.columns[ri].values.size(),
-                 (int)data.columns[ci].values.size(),
-                 (int)data.columns[vi].values.size()});
+    int n = (std::min)((int)data.columns[ri].values.size(),
+             (std::min)((int)data.columns[ci].values.size(),
+                        (int)data.columns[vi].values.size()));
 
     for (int i = 0; i < n; ++i) {
         const CString& rv = data.columns[ri].values[i];

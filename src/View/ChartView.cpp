@@ -1,4 +1,4 @@
-#include "../stdafx.h"
+#include "stdafx.h"
 #include "ChartView.h"
 
 // ChartRenderer 연동 (구현 완료 후 활성화)

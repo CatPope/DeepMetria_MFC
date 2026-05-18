@@ -4,8 +4,8 @@
 // Report 스타일 리스트뷰로 컬럼명, 타입, 고유값 수, 결측치, 최소/최대 표시
 // Architecture §3 / DetailedSpec §3.2 참조
 
-#include "../stdafx.h"
-#include "../Common/Types.h"
+// afxwin.h와 Types.h는 stdafx.h(PCH)에서 이미 포함됨
+#include <afxcview.h>   // CListView (CCtrlView 파생 Report 스타일 뷰)
 
 // ============================================================
 // CDataSummaryView — CListView 파생 (Report 스타일)

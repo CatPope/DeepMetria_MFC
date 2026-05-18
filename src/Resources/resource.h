@@ -1,21 +1,22 @@
 //{{NO_DEPENDENCIES}}
-// Microsoft Visual C++에서 생성한 포함 파일.
-// DeepMetria.rc에서 사용됩니다.
+// Microsoft Visual C++ generated include file.
+// Used by DeepMetria.rc
 
-#pragma once
+#ifndef DEEPMETRIA_RESOURCE_H
+#define DEEPMETRIA_RESOURCE_H
 
-// 앱 리소스 ID
+// App resource IDs
 #define IDR_MAINFRAME               128
 #define IDR_TOOLBAR                 129
 #define IDR_MENU_MAINFRAME          130
 
-// 다이얼로그 ID
+// Dialog IDs
 #define IDD_ABOUTBOX                100
 #define IDD_SETTINGS                101
 #define IDD_EXPORT                  102
 #define IDD_FILE_OPEN               103
 
-// 메뉴 커맨드 ID
+// Menu command IDs
 #define ID_FILE_OPEN_DATA           32771
 #define ID_FILE_RECENT_FILES        32772
 #define ID_ANALYSIS_NEW_QUERY       32780
@@ -23,7 +24,7 @@
 #define ID_TOOLS_EXPORT             32791
 #define ID_HELP_ABOUT               32800
 
-// 컨트롤 ID
+// Control IDs
 #define IDC_STATIC_VERSION          1001
 #define IDC_STATIC_COPYRIGHT        1002
 #define IDC_EDIT_QUERY              1010
@@ -36,22 +37,39 @@
 #define IDC_EDIT_EXPORT_PATH        1031
 #define IDC_BUTTON_BROWSE           1032
 
-// QueryInput 폼 다이얼로그 및 컨트롤 ID
-// IDD_QUERYINPUT_FORM: 130은 IDR_MENU_MAINFRAME과 충돌하므로 140 사용
+// QueryInput form dialog and control IDs
 #define IDD_QUERYINPUT_FORM         140
-// IDC_EDIT_QUERY(1010), IDC_BUTTON_SEND(1011), IDC_LIST_HISTORY(1012)는 기존 정의 재사용
-#define IDC_BTN_ANALYZE             1033  // 1011=IDC_BUTTON_SEND 충돌 회피
-#define IDC_STATIC_STATUS           1034  // 1012=IDC_LIST_HISTORY 충돌 회피
+#define IDC_BTN_ANALYZE             1033
+#define IDC_STATIC_STATUS           1034
 #define IDC_PROGRESS_BAR            1013
 
-// 상태바 인디케이터 ID
+// Settings dialog control IDs
+#define IDC_EDIT_CLAUDE_KEY         1040
+#define IDC_EDIT_OPENAI_KEY         1041
+#define IDC_COMBO_PROVIDER          1042
+#define IDC_COMBO_MODEL             1043
+#define IDC_BTN_TEST                1044
+
+// Export dialog control IDs
+#define IDC_BTN_BROWSE              1050
+#define IDC_BTN_EXPORT              1051
+#define IDC_COMBO_FORMAT            1052
+#define IDC_EDIT_PATH               1053
+#define IDC_SPIN_WIDTH              1054
+#define IDC_SPIN_HEIGHT             1055
+#define IDC_EDIT_WIDTH              1056
+#define IDC_EDIT_HEIGHT             1057
+
+// Status bar indicator IDs
 #define ID_INDICATOR_STATUS         0xE700
 #define ID_INDICATOR_PROGRESS       0xE701
 
-// 다음 기본 ID 값 (Visual Studio 리소스 편집기 자동 관리)
+// Next default ID values (managed by Visual Studio resource editor)
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE    141
 #define _APS_NEXT_COMMAND_VALUE     32810
-#define _APS_NEXT_CONTROL_VALUE     1040
+#define _APS_NEXT_CONTROL_VALUE     1058
 #define _APS_NEXT_SYMED_VALUE       104
 #endif
+
+#endif // DEEPMETRIA_RESOURCE_H

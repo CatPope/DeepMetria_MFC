@@ -33,7 +33,7 @@ DataTable CSVParser::Parse(const CString& filePath, AppError& outError) {
     std::string content = StripBOM(ConvertToUTF8(raw));
 
     // 구분자 감지 (첫 1KB 샘플)
-    std::string sample = content.substr(0, std::min((size_t)1024, content.size()));
+    std::string sample = content.substr(0, (std::min)((size_t)1024, content.size()));
     char delimiter = DetectDelimiter(sample);
 
     // 행 단위 파싱

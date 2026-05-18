@@ -7,6 +7,23 @@
 #include <list>
 #include <ctime>
 
+// CString 해시 펑터 — namespace std 특수화 대신 커스텀 펑터 사용
+// (MSVC PCH 환경에서 namespace std 재열기가 금지되므로)
+struct CStringHasher {
+    size_t operator()(const CString& str) const noexcept {
+        size_t h = 0;
+        for (int i = 0; i < str.GetLength(); i++) {
+            h = h * 31 + static_cast<size_t>(str[i]);
+        }
+        return h;
+    }
+};
+struct CStringEqual {
+    bool operator()(const CString& a, const CString& b) const noexcept {
+        return a == b;
+    }
+};
+
 // ============================================================
 // AnalysisCache — TTL + LRU 인메모리 캐시
 // ============================================================
@@ -58,6 +75,6 @@ private:
     // LRU 접근 순서 리스트 (앞=가장 최근, 뒤=가장 오래됨)
     std::list<LRUNode> m_lruList;
 
-    // 빠른 조회용 맵: key → 리스트 이터레이터
-    std::unordered_map<CString, std::list<LRUNode>::iterator> m_map;
+    // 빠른 조회용 맵: key → 리스트 이터레이터 (CStringHasher 사용)
+    std::unordered_map<CString, std::list<LRUNode>::iterator, CStringHasher, CStringEqual> m_map;
 };

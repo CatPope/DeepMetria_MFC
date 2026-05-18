@@ -4,8 +4,8 @@
 // 분석 시작, 진행률 표시, 결과 반영
 // Architecture §3 / DetailedSpec §3.3 참조
 
-#include "../stdafx.h"
-#include "../Common/Types.h"
+// afxwin.h와 Types.h는 stdafx.h(PCH)에서 이미 포함됨
+#include "../Resources/resource.h"
 
 // 전방 선언
 class AnalysisOrchestrator;

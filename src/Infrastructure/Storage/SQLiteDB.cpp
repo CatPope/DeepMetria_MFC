@@ -286,7 +286,7 @@ std::vector<DataSourceInfo> SQLiteDB::GetDataSources(AppError& outError) {
         info.fileType  = row[2];
         info.status    = row[3];
         info.rowCount  = _ttoi(row[4]);
-        info.createdAt = row[5];
+        info.createdAt = (time_t)_ttoi64(row[5]);
         result.push_back(info);
     }
     return result;

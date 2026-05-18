@@ -4,7 +4,6 @@
 // 시각화 카드를 그리드로 배치하고 WM_VISUALIZATION_READY 처리
 // Architecture §3 / DetailedSpec §3.2 참조
 
-#include "../stdafx.h"
 #include "../Common/Types.h"
 
 // 전방 선언

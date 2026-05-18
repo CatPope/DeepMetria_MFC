@@ -15,3 +15,23 @@ secrets/
 
 # OMC sessions
 .omc/
+
+# Build artifacts
+x64/
+Debug/
+Release/
+DeepMetria/
+*.obj
+*.pch
+*.pdb
+*.ilk
+*.exe
+*.log
+*.tlog/
+*.res
+*.recipe
+*.idb
+
+# Temp build scripts
+build2.bat
+build_errors.log

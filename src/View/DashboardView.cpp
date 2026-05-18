@@ -1,4 +1,4 @@
-#include "../stdafx.h"
+#include "stdafx.h"
 #include "DashboardView.h"
 
 // Renderer는 .cpp에서만 include (전방 선언으로 헤더 의존성 최소화)

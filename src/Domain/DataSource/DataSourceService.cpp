@@ -30,12 +30,12 @@ BOOL DataSourceService::LoadFile(const CString& filePath,
     CString ext = GetExtension(filePath);
 
     if (ext == _T("csv")) {
-        CSVParser parser;
-        return parser.Parse(filePath, outData, outError);
+        outData = CSVParser::Parse(filePath, outError);
+        return outError.code.IsEmpty();
     }
     else if (ext == _T("xlsx") || ext == _T("xls")) {
-        ExcelParser parser;
-        return parser.Parse(filePath, outData, outError);
+        outData = ExcelParser::Parse(filePath, outError);
+        return outError.code.IsEmpty();
     }
     else if (ext == _T("json")) {
         // JSON은 MVP 범위 외 — 추후 JsonParser 추가

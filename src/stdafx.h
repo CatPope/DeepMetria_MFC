@@ -4,8 +4,12 @@
 // 자주 사용되지만 거의 변경되지 않는 표준 시스템 포함 파일 또는
 // 프로젝트 전용 포함 파일
 
-#ifndef VC_EXTRA_LEAN
-#define VC_EXTRA_LEAN
+// Windows 최소 버전: Windows 10
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0A00
+#endif
+#ifndef WINVER
+#define WINVER 0x0A00
 #endif
 
 // 유니코드 문자 집합
@@ -37,3 +41,7 @@
 
 // Windows 공통 헤더
 #include <windows.h>
+
+// 공용 타입 — PCH 안에 포함시켜 afxwin.h 이후 순서 보장
+// (Types.h 자체에 afxwin.h를 include하면 PCH 경계 위반 발생)
+#include "Common/Types.h"

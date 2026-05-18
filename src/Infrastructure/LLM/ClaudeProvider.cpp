@@ -232,7 +232,7 @@ size_t ClaudeProvider::WriteCallback(void* contents, size_t size, size_t nmemb, 
 // 문자열 변환 헬퍼
 // ============================================================
 
-std::string ClaudeProvider::StringUtils::ToUTF8(const CString& str) {
+std::string ClaudeProvider::CStringToUTF8(const CString& str) {
     if (str.IsEmpty()) return "";
     int len = WideCharToMultiByte(CP_UTF8, 0, str, -1, nullptr, 0, nullptr, nullptr);
     std::string result(len, '\0');
@@ -241,7 +241,7 @@ std::string ClaudeProvider::StringUtils::ToUTF8(const CString& str) {
     return result;
 }
 
-CString ClaudeProvider::StringUtils::FromUTF8(const std::string& utf8) {
+CString ClaudeProvider::UTF8ToCString(const std::string& utf8) {
     if (utf8.empty()) return _T("");
     int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0);
     CString result;
@@ -250,7 +250,7 @@ CString ClaudeProvider::StringUtils::FromUTF8(const std::string& utf8) {
     return result;
 }
 
-std::string ClaudeProvider::StringUtils::JsonEscape(const std::string& s) {
+std::string ClaudeProvider::JsonEscape(const std::string& s) {
     std::string out;
     out.reserve(s.size());
     for (char c : s) {

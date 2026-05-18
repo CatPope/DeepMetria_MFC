@@ -1,7 +1,7 @@
 // DeepMetriaDoc.cpp — CDeepMetriaDoc 구현
 // 파일 로드, 데이터 모델 관리, 직렬화 담당
 
-#include "../stdafx.h"
+#include "stdafx.h"
 #include "DeepMetriaDoc.h"
 
 // ============================================================

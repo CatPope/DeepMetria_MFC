@@ -3,7 +3,6 @@
 // DeepMetriaDoc.h — CDocument 파생 문서 클래스
 // 현재 로드된 데이터 테이블과 시각화 정보를 보유한다.
 
-#include "../stdafx.h"
 #include "../Common/Types.h"
 
 // ============================================================

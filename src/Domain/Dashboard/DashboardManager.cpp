@@ -27,9 +27,8 @@ BOOL DashboardManager::AddVisualization(const VisualizationInfo& viz,
     m_layout.push_back(viz.position);
 
     // SQLiteDB에 저장
-    SQLiteDB db;
-    if (!db.Open(outError))
-        return FALSE;
+    SQLiteDB& db = SQLiteDB::Instance();
+    (void)outError; // Initialize는 앱 시작 시 완료됨
 
     CString vizJson = SerializeVizInfo(viz);
 
@@ -72,9 +71,8 @@ BOOL DashboardManager::RemoveVisualization(const CString& vizId,
         m_layout.erase(lit);
 
     // DB에서 제거
-    SQLiteDB db;
-    if (!db.Open(outError))
-        return FALSE;
+    SQLiteDB& db = SQLiteDB::Instance();
+    (void)outError; // Initialize는 앱 시작 시 완료됨
 
     // SQL 인젝션 방지: 작은따옴표 이스케이프
     CString safeVizId = vizId;
@@ -92,9 +90,8 @@ std::vector<VisualizationInfo> DashboardManager::GetVisualizations() const
 
 BOOL DashboardManager::SaveDashboard(const CString& name, AppError& outError)
 {
-    SQLiteDB db;
-    if (!db.Open(outError))
-        return FALSE;
+    SQLiteDB& db = SQLiteDB::Instance();
+    (void)outError; // Initialize는 앱 시작 시 완료됨
 
     CString layoutJson = SerializeLayout(m_layout);
 
@@ -117,7 +114,9 @@ BOOL DashboardManager::SaveDashboard(const CString& name, AppError& outError)
 
         // 생성된 ID 조회
         CString idSql = _T("SELECT last_insert_rowid()");
-        m_currentDashboardId = db.QueryScalar(idSql);
+        std::vector<std::vector<CString>> idRows;
+        if (db.Query(idSql, idRows, outError) && !idRows.empty() && !idRows[0].empty())
+            m_currentDashboardId = idRows[0][0];
     } else {
         // 기존 대시보드 업데이트
         sql.Format(
@@ -135,9 +134,8 @@ BOOL DashboardManager::SaveDashboard(const CString& name, AppError& outError)
 BOOL DashboardManager::LoadDashboard(const CString& dashboardId,
                                       AppError&      outError)
 {
-    SQLiteDB db;
-    if (!db.Open(outError))
-        return FALSE;
+    SQLiteDB& db = SQLiteDB::Instance();
+    (void)outError; // Initialize는 앱 시작 시 완료됨
 
     // SQL 인젝션 방지: 작은따옴표 이스케이프
     CString safeDashboardId = dashboardId;
@@ -148,7 +146,10 @@ BOOL DashboardManager::LoadDashboard(const CString& dashboardId,
     sql.Format(_T("SELECT layout FROM dashboards WHERE id = '%s'"),
                (LPCTSTR)safeDashboardId);
 
-    CString layoutJson = db.QueryScalar(sql);
+    std::vector<std::vector<CString>> layoutResult;
+    CString layoutJson;
+    if (db.Query(sql, layoutResult, outError) && !layoutResult.empty() && !layoutResult[0].empty())
+        layoutJson = layoutResult[0][0];
     if (layoutJson.IsEmpty()) {
         outError = AppError(_T("DASHBOARD_NOT_FOUND"),
                             _T("대시보드를 찾을 수 없습니다."), 2);
@@ -170,7 +171,8 @@ BOOL DashboardManager::LoadDashboard(const CString& dashboardId,
         (LPCTSTR)safeDashboardId
     );
 
-    std::vector<std::vector<CString>> rows = db.QueryRows(sql);
+    std::vector<std::vector<CString>> rows;
+    db.Query(sql, rows, outError);
     for (const auto& row : rows) {
         if (row.size() < 8) continue;
         VisualizationInfo viz;
@@ -202,9 +204,8 @@ BOOL DashboardManager::UpdateLayout(const std::vector<LayoutItem>& layout,
         return FALSE;
     }
 
-    SQLiteDB db;
-    if (!db.Open(outError))
-        return FALSE;
+    SQLiteDB& db = SQLiteDB::Instance();
+    (void)outError; // Initialize는 앱 시작 시 완료됨
 
     CString layoutJson = SerializeLayout(layout);
 
@@ -225,12 +226,11 @@ std::vector<DashboardInfo> DashboardManager::GetDashboardList(AppError& outError
 {
     std::vector<DashboardInfo> list;
 
-    SQLiteDB db;
-    if (!db.Open(outError))
-        return list;
+    SQLiteDB& db = SQLiteDB::Instance();
 
     CString sql = _T("SELECT id, name, datasource_id FROM dashboards ORDER BY rowid DESC");
-    std::vector<std::vector<CString>> rows = db.QueryRows(sql);
+    std::vector<std::vector<CString>> rows;
+    db.Query(sql, rows, outError);
 
     for (const auto& row : rows) {
         if (row.size() < 3) continue;
@@ -247,9 +247,8 @@ std::vector<DashboardInfo> DashboardManager::GetDashboardList(AppError& outError
 BOOL DashboardManager::RemoveDashboard(const CString& dashboardId,
                                         AppError&      outError)
 {
-    SQLiteDB db;
-    if (!db.Open(outError))
-        return FALSE;
+    SQLiteDB& db = SQLiteDB::Instance();
+    (void)outError; // Initialize는 앱 시작 시 완료됨
 
     // SQL 인젝션 방지: 작은따옴표 이스케이프
     CString safeDashboardId = dashboardId;

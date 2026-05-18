@@ -1,5 +1,5 @@
-// DeepMetria.rc — MFC 리소스 파일
-// IDR_MAINFRAME 메뉴, IDR_TOOLBAR, IDD_ABOUTBOX 정의
+// DeepMetria.rc - MFC resource file
+#pragma code_page(65001)
 
 #include "resource.h"
 #include "afxres.h"
