@@ -22,7 +22,8 @@ public:
     // 프로바이더 식별자
     enum class Provider {
         Claude,
-        OpenAI
+        OpenAI,
+        Gemini
     };
 
     // 싱글턴 인스턴스 획득
@@ -99,4 +100,5 @@ private:
     CString                   m_model;          // 빈 문자열이면 프로바이더 기본값
     std::unique_ptr<ILLMProvider> m_pClaude;
     std::unique_ptr<ILLMProvider> m_pOpenAI;
+    std::unique_ptr<ILLMProvider> m_pGemini;
 };

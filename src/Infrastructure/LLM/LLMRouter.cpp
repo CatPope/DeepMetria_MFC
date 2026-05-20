@@ -2,6 +2,7 @@
 #include "LLMRouter.h"
 #include "ClaudeProvider.h"
 #include "OpenAIProvider.h"
+#include "GeminiProvider.h"
 #include <wincrypt.h>
 #include <afxmt.h>
 
@@ -23,6 +24,7 @@ LLMRouter::LLMRouter()
     : m_activeProvider(Provider::Claude)
     , m_pClaude(std::make_unique<ClaudeProvider>())
     , m_pOpenAI(std::make_unique<OpenAIProvider>())
+    , m_pGemini(std::make_unique<GeminiProvider>())
 {
 }
 
@@ -39,8 +41,10 @@ void LLMRouter::SetProvider(Provider provider) {
 void LLMRouter::SetApiKey(Provider provider, const CString& apiKey) {
     if (provider == Provider::Claude)
         m_pClaude->SetApiKey(apiKey);
-    else
+    else if (provider == Provider::OpenAI)
         m_pOpenAI->SetApiKey(apiKey);
+    else if (provider == Provider::Gemini)
+        m_pGemini->SetApiKey(apiKey);
 }
 
 // ============================================================
@@ -245,6 +249,7 @@ ILLMProvider* LLMRouter::ActiveProvider() {
     switch (m_activeProvider) {
     case Provider::Claude: return m_pClaude.get();
     case Provider::OpenAI: return m_pOpenAI.get();
+    case Provider::Gemini: return m_pGemini.get();
     default:               return m_pClaude.get();
     }
 }

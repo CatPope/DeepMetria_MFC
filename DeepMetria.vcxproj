@@ -108,6 +108,8 @@
     <ClCompile Include="src\Domain\Orchestrator\AnalysisOrchestrator.cpp" />
     <ClCompile Include="src\Infrastructure\Cache\AnalysisCache.cpp" />
     <ClCompile Include="src\Infrastructure\LLM\ClaudeProvider.cpp" />
+    <ClCompile Include="src\Infrastructure\LLM\GeminiProvider.cpp" />
+    <ClCompile Include="src\Infrastructure\LLM\HttpClient.cpp" />
     <ClCompile Include="src\Infrastructure\LLM\LLMRouter.cpp" />
     <ClCompile Include="src\Infrastructure\LLM\OpenAIProvider.cpp" />
     <ClCompile Include="src\Infrastructure\Parser\CSVParser.cpp" />
@@ -144,6 +146,8 @@
     <ClInclude Include="src\Domain\Orchestrator\AnalysisOrchestrator.h" />
     <ClInclude Include="src\Infrastructure\Cache\AnalysisCache.h" />
     <ClInclude Include="src\Infrastructure\LLM\ClaudeProvider.h" />
+    <ClInclude Include="src\Infrastructure\LLM\GeminiProvider.h" />
+    <ClInclude Include="src\Infrastructure\LLM\HttpClient.h" />
     <ClInclude Include="src\Infrastructure\LLM\LLMProvider.h" />
     <ClInclude Include="src\Infrastructure\LLM\LLMRouter.h" />
     <ClInclude Include="src\Infrastructure\LLM\OpenAIProvider.h" />

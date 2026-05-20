@@ -1,7 +1,7 @@
 #include "stdafx.h"
 #include "SettingsDialog.h"
 
-#include <wincrypt.h>  // DPAPI (CryptProtectData / CryptUnprotectData)
+#include <wincrypt.h>
 #pragma comment(lib, "crypt32.lib")
 
 // ============================================================
@@ -16,8 +16,8 @@ const TCHAR CSettingsDialog::REG_KEY[] =
 IMPLEMENT_DYNAMIC(CSettingsDialog, CDialogEx)
 
 BEGIN_MESSAGE_MAP(CSettingsDialog, CDialogEx)
-    ON_BN_CLICKED(IDC_BTN_TEST,           &CSettingsDialog::OnBnClickedTest)
-    ON_CBN_SELCHANGE(IDC_COMBO_PROVIDER,  &CSettingsDialog::OnCbnSelchangeProvider)
+    ON_BN_CLICKED(IDC_BTN_TEST,          &CSettingsDialog::OnBnClickedTest)
+    ON_CBN_SELCHANGE(IDC_COMBO_PROVIDER, &CSettingsDialog::OnCbnSelchangeProvider)
 END_MESSAGE_MAP()
 
 // ============================================================
@@ -38,11 +38,10 @@ CSettingsDialog::~CSettingsDialog()
 void CSettingsDialog::DoDataExchange(CDataExchange* pDX)
 {
     CDialogEx::DoDataExchange(pDX);
-    DDX_Control(pDX, IDC_EDIT_CLAUDE_KEY,  m_editClaudeKey);
-    DDX_Control(pDX, IDC_EDIT_OPENAI_KEY,  m_editOpenAIKey);
-    DDX_Control(pDX, IDC_COMBO_PROVIDER,   m_comboProvider);
-    DDX_Control(pDX, IDC_COMBO_MODEL,      m_comboModel);
-    DDX_Control(pDX, IDC_BTN_TEST,         m_btnTest);
+    DDX_Control(pDX, IDC_COMBO_PROVIDER, m_comboProvider);
+    DDX_Control(pDX, IDC_EDIT_API_KEY,   m_editApiKey);
+    DDX_Control(pDX, IDC_COMBO_MODEL,    m_comboModel);
+    DDX_Control(pDX, IDC_BTN_TEST,       m_btnTest);
 }
 
 // ============================================================
@@ -52,16 +51,19 @@ BOOL CSettingsDialog::OnInitDialog()
 {
     CDialogEx::OnInitDialog();
 
-    // 프로바이더 목록 초기화
+    // 프로바이더 목록
     m_comboProvider.AddString(_T("Claude"));
     m_comboProvider.AddString(_T("OpenAI"));
+    m_comboProvider.AddString(_T("Gemini"));
     m_comboProvider.SetCurSel(0);
 
-    // 초기 모델 목록 설정
-    UpdateModelList(_T("Claude"));
-
-    // 저장된 설정 로드
+    // 저장된 설정 로드 (키 캐시에 복호화된 값 저장)
     LoadSettings();
+
+    // 현재 프로바이더에 맞는 모델 목록 + 키 표시
+    CString provider = GetSelectedProvider();
+    UpdateModelList(provider);
+    ShowKeyForProvider(provider);
 
     return TRUE;
 }
@@ -71,35 +73,92 @@ BOOL CSettingsDialog::OnInitDialog()
 // ============================================================
 void CSettingsDialog::OnOK()
 {
+    CacheCurrentKey(); // 현재 에디트 내용을 캐시에 반영
     SaveSettings();
     CDialogEx::OnOK();
 }
 
 // ============================================================
-// 프로바이더 변경 시 모델 목록 갱신
+// 프로바이더 변경
 // ============================================================
 void CSettingsDialog::OnCbnSelchangeProvider()
 {
-    CString provider;
-    m_comboProvider.GetWindowText(provider);
+    CacheCurrentKey(); // 이전 프로바이더의 키를 캐시에 저장
+
+    CString provider = GetSelectedProvider();
     UpdateModelList(provider);
+    ShowKeyForProvider(provider);
 }
 
+CString CSettingsDialog::GetSelectedProvider() const
+{
+    CString provider;
+    int sel = m_comboProvider.GetCurSel();
+    if (sel != CB_ERR)
+        m_comboProvider.GetLBText(sel, provider);
+    return provider;
+}
+
+// ============================================================
+// 키 캐시 관리
+// ============================================================
+void CSettingsDialog::CacheCurrentKey()
+{
+    CString key;
+    m_editApiKey.GetWindowText(key);
+
+    CString provider = GetSelectedProvider();
+    if (provider == _T("Claude"))
+        m_claudeKey = key;
+    else if (provider == _T("OpenAI"))
+        m_openaiKey = key;
+    else if (provider == _T("Gemini"))
+        m_geminiKey = key;
+}
+
+void CSettingsDialog::ShowKeyForProvider(const CString& provider)
+{
+    if (provider == _T("Claude"))
+        m_editApiKey.SetWindowText(m_claudeKey);
+    else if (provider == _T("OpenAI"))
+        m_editApiKey.SetWindowText(m_openaiKey);
+    else if (provider == _T("Gemini"))
+        m_editApiKey.SetWindowText(m_geminiKey);
+    else
+        m_editApiKey.SetWindowText(_T(""));
+}
+
+// ============================================================
+// 모델 목록 갱신 (공식 문서 기반 최신 모델)
+// ============================================================
 void CSettingsDialog::UpdateModelList(const CString& provider)
 {
     m_comboModel.ResetContent();
 
     if (provider == _T("Claude"))
     {
-        m_comboModel.AddString(_T("claude-opus-4-5"));
-        m_comboModel.AddString(_T("claude-sonnet-4-5"));
-        m_comboModel.AddString(_T("claude-haiku-3-5"));
+        // https://docs.anthropic.com/en/docs/about-claude/models
+        m_comboModel.AddString(_T("claude-sonnet-4-5-20250514"));
+        m_comboModel.AddString(_T("claude-opus-4-5-20250414"));
+        m_comboModel.AddString(_T("claude-haiku-3-5-20241022"));
     }
     else if (provider == _T("OpenAI"))
     {
+        // https://platform.openai.com/docs/models
         m_comboModel.AddString(_T("gpt-4o"));
         m_comboModel.AddString(_T("gpt-4o-mini"));
-        m_comboModel.AddString(_T("gpt-4-turbo"));
+        m_comboModel.AddString(_T("o3"));
+        m_comboModel.AddString(_T("o3-mini"));
+        m_comboModel.AddString(_T("o4-mini"));
+    }
+    else if (provider == _T("Gemini"))
+    {
+        // https://ai.google.dev/gemini-api/docs/models
+        m_comboModel.AddString(_T("gemini-3.1-pro-preview"));
+        m_comboModel.AddString(_T("gemini-3.1-flash-lite"));
+        m_comboModel.AddString(_T("gemini-3-flash-preview"));
+        m_comboModel.AddString(_T("gemini-2.5-pro"));
+        m_comboModel.AddString(_T("gemini-2.5-flash"));
     }
 
     m_comboModel.SetCurSel(0);
@@ -110,14 +169,13 @@ void CSettingsDialog::UpdateModelList(const CString& provider)
 // ============================================================
 void CSettingsDialog::OnBnClickedTest()
 {
-    CString provider;
-    m_comboProvider.GetWindowText(provider);
+    CacheCurrentKey();
 
+    CString provider = GetSelectedProvider();
     CString apiKey;
-    if (provider == _T("Claude"))
-        m_editClaudeKey.GetWindowText(apiKey);
-    else
-        m_editOpenAIKey.GetWindowText(apiKey);
+    if (provider == _T("Claude"))       apiKey = m_claudeKey;
+    else if (provider == _T("OpenAI"))  apiKey = m_openaiKey;
+    else if (provider == _T("Gemini"))  apiKey = m_geminiKey;
 
     CString model;
     m_comboModel.GetWindowText(model);
@@ -142,10 +200,8 @@ BOOL CSettingsDialog::TestApiConnection(const CString& provider,
                                          const CString& apiKey,
                                          const CString& model)
 {
-    // LLMRouter를 통한 실제 연결 테스트 (LLMRouter 구현 완료 후 활성화)
-    // return LLMRouter::GetInstance().TestConnection(provider, apiKey, model);
-
-    // 임시: 키가 비어있지 않으면 성공으로 간주
+    // LLMRouter를 통한 실제 연결 테스트 (추후 활성화)
+    // return LLMRouter::Instance().TestConnection(provider, apiKey, model);
     return !apiKey.IsEmpty();
 }
 
@@ -154,10 +210,8 @@ BOOL CSettingsDialog::TestApiConnection(const CString& provider,
 // ============================================================
 void CSettingsDialog::SaveSettings()
 {
-    CString claudeKey, openaiKey, provider, model;
-    m_editClaudeKey.GetWindowText(claudeKey);
-    m_editOpenAIKey.GetWindowText(openaiKey);
-    m_comboProvider.GetWindowText(provider);
+    CString provider = GetSelectedProvider();
+    CString model;
     m_comboModel.GetWindowText(model);
 
     CRegKey reg;
@@ -167,12 +221,10 @@ void CSettingsDialog::SaveSettings()
         return;
     }
 
-    // API 키는 DPAPI로 암호화
-    CString encClaude  = EncryptString(claudeKey);
-    CString encOpenAI  = EncryptString(openaiKey);
-
-    reg.SetStringValue(_T("ClaudeKey"),  encClaude);
-    reg.SetStringValue(_T("OpenAIKey"),  encOpenAI);
+    // 프로바이더별 키를 각각 암호화 저장
+    reg.SetStringValue(_T("ClaudeKey"),  EncryptString(m_claudeKey));
+    reg.SetStringValue(_T("OpenAIKey"),  EncryptString(m_openaiKey));
+    reg.SetStringValue(_T("GeminiKey"),  EncryptString(m_geminiKey));
     reg.SetStringValue(_T("Provider"),   provider);
     reg.SetStringValue(_T("Model"),      model);
 }
@@ -184,7 +236,7 @@ void CSettingsDialog::LoadSettings()
 {
     CRegKey reg;
     if (reg.Open(HKEY_CURRENT_USER, REG_KEY, KEY_READ) != ERROR_SUCCESS)
-        return; // 최초 실행 시 키 없음 — 정상
+        return;
 
     TCHAR buf[1024] = {};
     ULONG len = 0;
@@ -192,18 +244,17 @@ void CSettingsDialog::LoadSettings()
     // Claude 키
     len = _countof(buf);
     if (reg.QueryStringValue(_T("ClaudeKey"), buf, &len) == ERROR_SUCCESS)
-    {
-        CString plain = DecryptString(buf);
-        m_editClaudeKey.SetWindowText(plain);
-    }
+        m_claudeKey = DecryptString(buf);
 
     // OpenAI 키
     len = _countof(buf);
     if (reg.QueryStringValue(_T("OpenAIKey"), buf, &len) == ERROR_SUCCESS)
-    {
-        CString plain = DecryptString(buf);
-        m_editOpenAIKey.SetWindowText(plain);
-    }
+        m_openaiKey = DecryptString(buf);
+
+    // Gemini 키
+    len = _countof(buf);
+    if (reg.QueryStringValue(_T("GeminiKey"), buf, &len) == ERROR_SUCCESS)
+        m_geminiKey = DecryptString(buf);
 
     // 프로바이더
     len = _countof(buf);
@@ -211,13 +262,13 @@ void CSettingsDialog::LoadSettings()
     {
         int idx = m_comboProvider.FindStringExact(-1, buf);
         if (idx != CB_ERR)
-        {
             m_comboProvider.SetCurSel(idx);
-            UpdateModelList(buf);
-        }
     }
 
-    // 모델
+    // 모델 (프로바이더 설정 후 목록 갱신 → 모델 선택)
+    CString provider = GetSelectedProvider();
+    UpdateModelList(provider);
+
     len = _countof(buf);
     if (reg.QueryStringValue(_T("Model"), buf, &len) == ERROR_SUCCESS)
     {
@@ -235,7 +286,6 @@ CString CSettingsDialog::EncryptString(const CString& plainText)
     if (plainText.IsEmpty())
         return _T("");
 
-    // UTF-16 바이트 배열로 변환
     int byteLen = (plainText.GetLength() + 1) * sizeof(TCHAR);
     DATA_BLOB dataIn  = {};
     DATA_BLOB dataOut = {};
@@ -243,10 +293,9 @@ CString CSettingsDialog::EncryptString(const CString& plainText)
     dataIn.cbData = byteLen;
 
     if (!::CryptProtectData(&dataIn, nullptr, nullptr, nullptr, nullptr,
-                             CRYPTPROTECT_LOCAL_MACHINE, &dataOut))
+                             0, &dataOut))
         return _T("");
 
-    // Base64 인코딩
     DWORD b64Len = 0;
     ::CryptBinaryToString(dataOut.pbData, dataOut.cbData,
                            CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF,
@@ -269,7 +318,6 @@ CString CSettingsDialog::DecryptString(const CString& cipherB64)
     if (cipherB64.IsEmpty())
         return _T("");
 
-    // Base64 디코딩
     DWORD binLen = 0;
     ::CryptStringToBinary((LPCTSTR)cipherB64, cipherB64.GetLength(),
                            CRYPT_STRING_BASE64, nullptr, &binLen,
@@ -285,10 +333,9 @@ CString CSettingsDialog::DecryptString(const CString& cipherB64)
     dataIn.cbData = binLen;
 
     if (!::CryptUnprotectData(&dataIn, nullptr, nullptr, nullptr, nullptr,
-                               CRYPTPROTECT_LOCAL_MACHINE, &dataOut))
+                               0, &dataOut))
         return _T("");
 
-    // TCHAR 문자열로 변환
     CString result(reinterpret_cast<LPCTSTR>(dataOut.pbData));
     ::LocalFree(dataOut.pbData);
     return result;

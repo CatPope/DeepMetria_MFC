@@ -23,6 +23,7 @@
 #define WM_IMPORT_PROGRESS      (WM_USER + 108) // WPARAM: 진행률(0-100), LPARAM: 0
 #define WM_USER_QUOTA_UPDATED   (WM_USER + 109) // WPARAM: 0, LPARAM: 0
 #define WM_IMPORT_COMPLETE      (WM_USER + 110) // WPARAM: datasourceId, LPARAM: 0
+#define WM_ANALYSIS_NEW_QUERY   (WM_USER + 111) // WPARAM: 0, LPARAM: 0 (QueryInputView 포커스)
 
 // ============================================================
 // 공통 컨테이너 타입

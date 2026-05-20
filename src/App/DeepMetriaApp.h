@@ -20,9 +20,17 @@ public:
     ULONG_PTR m_gdiplusToken;
 
     // 메시지 핸들러
+    afx_msg void OnFileOpenData();
+    afx_msg void OnToolsSettings();
+    afx_msg void OnToolsExport();
+    afx_msg void OnAnalysisNewQuery();
     afx_msg void OnAppAbout();
 
     DECLARE_MESSAGE_MAP()
+
+private:
+    // SettingsDialog 레지스트리 → LLMRouter 동기화
+    void SyncLLMSettings();
 };
 
 // 전역 앱 인스턴스 (MFC 관례: theApp)

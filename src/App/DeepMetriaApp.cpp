@@ -8,6 +8,12 @@
 #include "../Resources/resource.h"
 #include "../Infrastructure/Storage/SQLiteDB.h"
 #include "../Infrastructure/Cache/AnalysisCache.h"
+#include "../Dialog/FileOpenDialog.h"
+#include "../Dialog/SettingsDialog.h"
+#include "../Domain/DataSource/DataSourceService.h"
+#include "../Infrastructure/LLM/LLMRouter.h"
+#include <wincrypt.h>
+#pragma comment(lib, "crypt32.lib")
 #include <shlobj.h>   // SHGetFolderPath, SHCreateDirectoryEx
 #include <shlwapi.h>  // PathIsDirectory
 #pragma comment(lib, "shlwapi.lib")
@@ -27,8 +33,11 @@ static AnalysisCache g_analysisCache;
 // ============================================================
 
 BEGIN_MESSAGE_MAP(CDeepMetriaApp, CWinApp)
-    ON_COMMAND(ID_FILE_OPEN_DATA, &CWinApp::OnFileOpen)
-    ON_COMMAND(ID_HELP_ABOUT,     &CDeepMetriaApp::OnAppAbout)
+    ON_COMMAND(ID_FILE_OPEN_DATA,      &CDeepMetriaApp::OnFileOpenData)
+    ON_COMMAND(ID_TOOLS_SETTINGS,      &CDeepMetriaApp::OnToolsSettings)
+    ON_COMMAND(ID_TOOLS_EXPORT,        &CDeepMetriaApp::OnToolsExport)
+    ON_COMMAND(ID_ANALYSIS_NEW_QUERY,  &CDeepMetriaApp::OnAnalysisNewQuery)
+    ON_COMMAND(ID_HELP_ABOUT,          &CDeepMetriaApp::OnAppAbout)
 END_MESSAGE_MAP()
 
 CDeepMetriaApp::CDeepMetriaApp()
@@ -111,6 +120,9 @@ BOOL CDeepMetriaApp::InitInstance()
     if (!ProcessShellCommand(cmdInfo))
         return FALSE;
 
+    // ---- LLM 설정 동기화 ----
+    SyncLLMSettings();
+
     // ---- 메인 윈도우 표시 ----
     m_pMainWnd->ShowWindow(m_nCmdShow);
     m_pMainWnd->UpdateWindow();
@@ -134,10 +146,160 @@ int CDeepMetriaApp::ExitInstance()
     return CWinApp::ExitInstance();
 }
 
+// ---- 파일 열기 (커스텀) ----
+void CDeepMetriaApp::OnFileOpenData()
+{
+    CFileOpenDialog fileOpenDlg;
+    CString filePath;
+
+    if (!fileOpenDlg.ShowAndGetPath(filePath, m_pMainWnd))
+        return; // 사용자 취소
+
+    // 현재 문서 가져오기
+    CDocument* pDoc = nullptr;
+    POSITION pos = GetFirstDocTemplatePosition();
+    if (pos)
+    {
+        CDocTemplate* pTemplate = GetNextDocTemplate(pos);
+        if (pTemplate)
+        {
+            POSITION docPos = pTemplate->GetFirstDocPosition();
+            if (docPos)
+                pDoc = pTemplate->GetNextDoc(docPos);
+        }
+    }
+
+    CDeepMetriaDoc* pMetriaDoc = dynamic_cast<CDeepMetriaDoc*>(pDoc);
+    if (!pMetriaDoc)
+    {
+        AfxMessageBox(_T("문서 객체를 찾을 수 없습니다."), MB_ICONERROR);
+        return;
+    }
+
+    // 파일 로드
+    AppError loadError;
+    if (!pMetriaDoc->LoadFile(filePath, loadError))
+    {
+        AfxMessageBox(
+            CString(_T("파일 로드 실패: ")) + loadError.message,
+            MB_ICONERROR);
+        return;
+    }
+
+    // 문서 제목 갱신 및 뷰 업데이트
+    pMetriaDoc->SetPathName(filePath, TRUE);
+    pMetriaDoc->UpdateAllViews(nullptr);
+
+    // 메인 프레임 상태바 업데이트
+    if (m_pMainWnd)
+        m_pMainWnd->PostMessage(WM_DATA_LOADED, 0, 0);
+}
+
+// ---- 도구 > 설정 ----
+void CDeepMetriaApp::OnToolsSettings()
+{
+    CSettingsDialog dlg(m_pMainWnd);
+    if (dlg.DoModal() == IDOK)
+        SyncLLMSettings();
+}
+
+// ---- 도구 > 내보내기 ----
+void CDeepMetriaApp::OnToolsExport()
+{
+    AfxMessageBox(_T("차트를 선택한 후 내보내기를 사용하세요."), MB_ICONINFORMATION);
+}
+
+// ---- 분석 > 새 질문 ----
+void CDeepMetriaApp::OnAnalysisNewQuery()
+{
+    // QueryInputView의 에디트 컨트롤에 포커스 이동
+    if (m_pMainWnd)
+        m_pMainWnd->PostMessage(WM_ANALYSIS_NEW_QUERY, 0, 0);
+}
+
 // ---- About 박스 ----
-// IDD_ABOUTBOX 다이얼로그는 리소스에 정의됨
 void CDeepMetriaApp::OnAppAbout()
 {
     CDialog dlg(IDD_ABOUTBOX);
     dlg.DoModal();
+}
+
+// ---- SettingsDialog 레지스트리 → LLMRouter 동기화 ----
+void CDeepMetriaApp::SyncLLMSettings()
+{
+    // SettingsDialog가 사용하는 레지스트리 경로에서 읽기
+    CRegKey reg;
+    if (reg.Open(HKEY_CURRENT_USER, _T("Software\\DeepMetria\\Settings"), KEY_READ) != ERROR_SUCCESS)
+        return;
+
+    // DPAPI 복호화 람다 (SettingsDialog::DecryptString과 동일)
+    auto decrypt = [](const CString& cipherB64) -> CString {
+        if (cipherB64.IsEmpty()) return _T("");
+
+        DWORD binLen = 0;
+        ::CryptStringToBinary(cipherB64, cipherB64.GetLength(),
+                              CRYPT_STRING_BASE64, nullptr, &binLen, nullptr, nullptr);
+        if (binLen == 0) return _T("");
+
+        std::vector<BYTE> binData(binLen);
+        ::CryptStringToBinary(cipherB64, cipherB64.GetLength(),
+                              CRYPT_STRING_BASE64, binData.data(), &binLen, nullptr, nullptr);
+
+        DATA_BLOB dataIn = { binLen, binData.data() };
+        DATA_BLOB dataOut = {};
+        if (!::CryptUnprotectData(&dataIn, nullptr, nullptr, nullptr, nullptr, 0, &dataOut))
+            return _T("");
+
+        CString result(reinterpret_cast<LPCTSTR>(dataOut.pbData));
+        ::LocalFree(dataOut.pbData);
+        return result;
+    };
+
+    TCHAR buf[1024] = {};
+    ULONG len = 0;
+
+    // 프로바이더 설정
+    len = _countof(buf);
+    if (reg.QueryStringValue(_T("Provider"), buf, &len) == ERROR_SUCCESS)
+    {
+        CString provider(buf);
+        if (provider == _T("Claude"))
+            LLMRouter::Instance().SetProvider(LLMRouter::Provider::Claude);
+        else if (provider == _T("OpenAI"))
+            LLMRouter::Instance().SetProvider(LLMRouter::Provider::OpenAI);
+        else if (provider == _T("Gemini"))
+            LLMRouter::Instance().SetProvider(LLMRouter::Provider::Gemini);
+    }
+
+    // 모델 설정
+    len = _countof(buf);
+    if (reg.QueryStringValue(_T("Model"), buf, &len) == ERROR_SUCCESS)
+        LLMRouter::Instance().SetModel(buf);
+
+    // API 키 로드 (DPAPI 복호화)
+    len = _countof(buf);
+    if (reg.QueryStringValue(_T("ClaudeKey"), buf, &len) == ERROR_SUCCESS)
+    {
+        CString key = decrypt(buf);
+        if (!key.IsEmpty())
+            LLMRouter::Instance().SetApiKey(LLMRouter::Provider::Claude, key);
+    }
+
+    len = _countof(buf);
+    if (reg.QueryStringValue(_T("OpenAIKey"), buf, &len) == ERROR_SUCCESS)
+    {
+        CString key = decrypt(buf);
+        if (!key.IsEmpty())
+            LLMRouter::Instance().SetApiKey(LLMRouter::Provider::OpenAI, key);
+    }
+
+    len = _countof(buf);
+    if (reg.QueryStringValue(_T("GeminiKey"), buf, &len) == ERROR_SUCCESS)
+    {
+        CString key = decrypt(buf);
+        if (!key.IsEmpty())
+            LLMRouter::Instance().SetApiKey(LLMRouter::Provider::Gemini, key);
+    }
+
+    TRACE(_T("[DeepMetriaApp] LLM 설정 동기화 완료\n"));
 }

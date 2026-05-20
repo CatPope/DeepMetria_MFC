@@ -67,17 +67,7 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
     if (CFrameWnd::OnCreate(lpCreateStruct) == -1)
         return -1;
 
-    // ---- 툴바 생성 ----
-    if (!m_wndToolBar.CreateEx(this, TBSTYLE_FLAT,
-            WS_CHILD | WS_VISIBLE | CBRS_TOP | CBRS_GRIPPER |
-            CBRS_TOOLTIPS | CBRS_FLYBY | CBRS_SIZE_DYNAMIC) ||
-        !m_wndToolBar.LoadToolBar(IDR_TOOLBAR))
-    {
-        TRACE0("툴바 생성 실패\n");
-        return -1;
-    }
-
-    m_wndToolBar.SetWindowText(_T("툴바"));
+    // TODO: 툴바 비트맵 리소스 추가 후 활성화
 
     // ---- 상태바 생성 ----
     if (!m_wndStatusBar.Create(this) ||
@@ -90,11 +80,6 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
     // 초기 상태 텍스트
     m_wndStatusBar.SetPaneText(0, _T("준비"));
 
-    // 툴바 도킹 활성화
-    m_wndToolBar.EnableDocking(CBRS_ALIGN_ANY);
-    EnableDocking(CBRS_ALIGN_ANY);
-    DockControlBar(&m_wndToolBar);
-
     return 0;
 }
 
@@ -102,12 +87,12 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 // OnCreateClient — CSplitterWnd 3분할 레이아웃 생성
 //
 // 레이아웃:
-//   좌측 (1열): DataSummaryView
-//   우상단 (2열 1행): DashboardView
-//   우하단 (2열 2행): QueryInputView
+//   좌측 (1열): QueryInputView (요청 창)
+//   우상단 (2열 1행): DataSummaryView (데이터 요약)
+//   우하단 (2열 2행): DashboardView (차트)
 //
-//   [DataSummaryView | DashboardView  ]
-//   [               | QueryInputView  ]
+//   [QueryInputView | DataSummaryView ]
+//   [               | DashboardView   ]
 // ============================================================
 BOOL CMainFrame::OnCreateClient(LPCREATESTRUCT lpcs, CCreateContext* pContext)
 {
@@ -118,11 +103,11 @@ BOOL CMainFrame::OnCreateClient(LPCREATESTRUCT lpcs, CCreateContext* pContext)
         return FALSE;
     }
 
-    // 좌측 패널: DataSummaryView (열 0)
+    // 좌측 패널: QueryInputView (열 0) — 요청 입력 창
     if (!m_wndSplitter.CreateView(0, 0,
-            RUNTIME_CLASS(CDataSummaryView), CSize(280, 600), pContext))
+            RUNTIME_CLASS(CQueryInputView), CSize(350, 600), pContext))
     {
-        TRACE0("DataSummaryView 생성 실패\n");
+        TRACE0("QueryInputView 생성 실패\n");
         return FALSE;
     }
 
@@ -137,26 +122,34 @@ BOOL CMainFrame::OnCreateClient(LPCREATESTRUCT lpcs, CCreateContext* pContext)
         return FALSE;
     }
 
-    // 우상단: DashboardView (행 0)
+    // 우상단: DataSummaryView (행 0) — 데이터 요약
     if (!pRightSplitter->CreateView(0, 0,
-            RUNTIME_CLASS(CDashboardView), CSize(900, 450), pContext))
+            RUNTIME_CLASS(CDataSummaryView), CSize(830, 300), pContext))
+    {
+        TRACE0("DataSummaryView 생성 실패\n");
+        return FALSE;
+    }
+
+    // 우하단: DashboardView (행 1) — 차트
+    if (!pRightSplitter->CreateView(1, 0,
+            RUNTIME_CLASS(CDashboardView), CSize(830, 300), pContext))
     {
         TRACE0("DashboardView 생성 실패\n");
         return FALSE;
     }
 
-    // 우하단: QueryInputView (행 1)
-    if (!pRightSplitter->CreateView(1, 0,
-            RUNTIME_CLASS(CQueryInputView), CSize(900, 150), pContext))
-    {
-        TRACE0("QueryInputView 생성 실패\n");
-        return FALSE;
-    }
-
     // 초기 열 너비 설정
-    m_wndSplitter.SetColumnInfo(0, 280, 100);
-    m_wndSplitter.SetColumnInfo(1, 900, 200);
+    m_wndSplitter.SetColumnInfo(0, 350, 150);
+    m_wndSplitter.SetColumnInfo(1, 830, 200);
     m_wndSplitter.RecalcLayout();
+
+    // 뷰 간 연결: QueryInputView → DashboardView
+    CQueryInputView* pQueryInput = dynamic_cast<CQueryInputView*>(
+        m_wndSplitter.GetPane(0, 0));
+    CDashboardView* pDashboard = dynamic_cast<CDashboardView*>(
+        pRightSplitter->GetPane(1, 0));
+    if (pQueryInput && pDashboard)
+        pQueryInput->SetDashboardView(pDashboard);
 
     return TRUE;
 }

@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "OpenAIProvider.h"
-#include <curl/curl.h>
+#include "HttpClient.h"
+#include "../../Common/StringUtils.h"
 
 // ============================================================
 // 상수
@@ -13,13 +14,9 @@ const int   OpenAIProvider::TIMEOUT_SEC = 30;
 // 생성자 / 소멸자
 // ============================================================
 
-OpenAIProvider::OpenAIProvider() {
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-}
+OpenAIProvider::OpenAIProvider() {}
 
-OpenAIProvider::~OpenAIProvider() {
-    curl_global_cleanup();
-}
+OpenAIProvider::~OpenAIProvider() {}
 
 // ============================================================
 // Chat — 단순 system+user 동기 호출
@@ -32,17 +29,17 @@ BOOL OpenAIProvider::Chat(const CString& systemPrompt,
                            AppError&      outError) {
     outError.Clear();
 
-    std::string sSystem = CStringToUTF8(systemPrompt);
-    std::string sUser   = CStringToUTF8(userMessage);
-    std::string sModel  = model.IsEmpty() ? "gpt-4o" : CStringToUTF8(model);
-    std::string sApiKey = CStringToUTF8(m_apiKey);
+    std::string sSystem = StringUtils::ToUTF8(systemPrompt);
+    std::string sUser   = StringUtils::ToUTF8(userMessage);
+    std::string sModel  = model.IsEmpty() ? "gpt-4o" : StringUtils::ToUTF8(model);
+    std::string sApiKey = StringUtils::ToUTF8(m_apiKey);
 
     // 요청 JSON: {"model":"...","messages":[{"role":"system","content":"..."},{"role":"user","content":"..."}]}
     std::string body =
-        "{\"model\":\"" + JsonEscape(sModel) + "\","
+        "{\"model\":\"" + StringUtils::JsonEscape(sModel) + "\","
         "\"messages\":["
-        "{\"role\":\"system\",\"content\":\"" + JsonEscape(sSystem) + "\"},"
-        "{\"role\":\"user\",\"content\":\"" + JsonEscape(sUser) + "\"}"
+        "{\"role\":\"system\",\"content\":\"" + StringUtils::JsonEscape(sSystem) + "\"},"
+        "{\"role\":\"user\",\"content\":\"" + StringUtils::JsonEscape(sUser) + "\"}"
         "]}";
 
     std::string responseBody;
@@ -64,23 +61,23 @@ BOOL OpenAIProvider::ChatWithHistory(const std::vector<ChatMessage>& messages,
         return FALSE;
     }
 
-    std::string sModel  = model.IsEmpty() ? "gpt-4o" : CStringToUTF8(model);
-    std::string sApiKey = CStringToUTF8(m_apiKey);
+    std::string sModel  = model.IsEmpty() ? "gpt-4o" : StringUtils::ToUTF8(model);
+    std::string sApiKey = StringUtils::ToUTF8(m_apiKey);
 
     std::string messagesJson = "[";
     bool first = true;
     for (const auto& msg : messages) {
         if (!first) messagesJson += ",";
-        std::string role    = CStringToUTF8(msg.role);
-        std::string content = CStringToUTF8(msg.content);
-        messagesJson += "{\"role\":\"" + JsonEscape(role) + "\","
-                        "\"content\":\"" + JsonEscape(content) + "\"}";
+        std::string role    = StringUtils::ToUTF8(msg.role);
+        std::string content = StringUtils::ToUTF8(msg.content);
+        messagesJson += "{\"role\":\"" + StringUtils::JsonEscape(role) + "\","
+                        "\"content\":\"" + StringUtils::JsonEscape(content) + "\"}";
         first = false;
     }
     messagesJson += "]";
 
     std::string body =
-        "{\"model\":\"" + JsonEscape(sModel) + "\","
+        "{\"model\":\"" + StringUtils::JsonEscape(sModel) + "\","
         "\"messages\":" + messagesJson + "}";
 
     std::string responseBody;
@@ -89,7 +86,7 @@ BOOL OpenAIProvider::ChatWithHistory(const std::vector<ChatMessage>& messages,
 }
 
 // ============================================================
-// PostRequest — libcurl HTTP POST
+// PostRequest — HttpClient 위임
 // ============================================================
 
 BOOL OpenAIProvider::PostRequest(const std::string& url,
@@ -97,53 +94,11 @@ BOOL OpenAIProvider::PostRequest(const std::string& url,
                                   const std::string& apiKey,
                                   std::string&       outBody,
                                   AppError&          outError) {
-    CURL* curl = curl_easy_init();
-    if (!curl) {
-        outError.Set(_T("CURL_INIT_FAILED"), _T("HTTP 클라이언트 초기화에 실패했습니다."));
-        return FALSE;
-    }
-
-    outBody.clear();
-
-    struct curl_slist* headers = nullptr;
-    std::string authHeader = "Authorization: Bearer " + apiKey;
-    headers = curl_slist_append(headers, "Content-Type: application/json");
-    headers = curl_slist_append(headers, authHeader.c_str());
-
-    curl_easy_setopt(curl, CURLOPT_URL,            url.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER,     headers);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS,     jsonBody.c_str());
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,  (long)jsonBody.size());
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,  WriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA,      &outBody);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT,        (long)TIMEOUT_SEC);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
-
-    CURLcode res = curl_easy_perform(curl);
-
-    long httpCode = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
-
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
-
-    if (res != CURLE_OK) {
-        CString msg;
-        msg.Format(_T("HTTP 요청 실패: %s"), UTF8ToCString(curl_easy_strerror(res)).GetString());
-        outError.Set(_T("HTTP_REQUEST_FAILED"), msg);
-        return FALSE;
-    }
-
-    if (httpCode != 200) {
-        CString msg;
-        msg.Format(_T("OpenAI API 오류 (HTTP %ld): %s"),
-                   httpCode, UTF8ToCString(outBody).GetString());
-        outError.Set(_T("API_ERROR"), msg);
-        return FALSE;
-    }
-
-    return TRUE;
+    std::vector<std::string> headers = {
+        "Content-Type: application/json",
+        "Authorization: Bearer " + apiKey
+    };
+    return HttpClient::PostJson(url, jsonBody, headers, outBody, outError, TIMEOUT_SEC);
 }
 
 // ============================================================
@@ -184,7 +139,7 @@ BOOL OpenAIProvider::ParseResponse(const std::string& jsonBody,
     if (choicesPos == std::string::npos) {
         std::string errMsg = findStr("message", 0);
         if (errMsg.empty()) errMsg = jsonBody;
-        outError.Set(_T("PARSE_ERROR"), UTF8ToCString(errMsg));
+        outError.Set(_T("PARSE_ERROR"), StringUtils::FromUTF8(errMsg));
         return FALSE;
     }
 
@@ -201,55 +156,6 @@ BOOL OpenAIProvider::ParseResponse(const std::string& jsonBody,
         return FALSE;
     }
 
-    outText = UTF8ToCString(content);
+    outText = StringUtils::FromUTF8(content);
     return TRUE;
-}
-
-// ============================================================
-// libcurl 쓰기 콜백
-// ============================================================
-
-size_t OpenAIProvider::WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
-    size_t total = size * nmemb;
-    auto* buf = static_cast<std::string*>(userp);
-    buf->append(static_cast<char*>(contents), total);
-    return total;
-}
-
-// ============================================================
-// 문자열 변환 헬퍼
-// ============================================================
-
-std::string OpenAIProvider::CStringToUTF8(const CString& str) {
-    if (str.IsEmpty()) return "";
-    int len = WideCharToMultiByte(CP_UTF8, 0, str, -1, nullptr, 0, nullptr, nullptr);
-    std::string result(len, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, str, -1, &result[0], len, nullptr, nullptr);
-    if (!result.empty() && result.back() == '\0') result.pop_back();
-    return result;
-}
-
-CString OpenAIProvider::UTF8ToCString(const std::string& utf8) {
-    if (utf8.empty()) return _T("");
-    int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0);
-    CString result;
-    MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, result.GetBufferSetLength(wlen), wlen);
-    result.ReleaseBuffer();
-    return result;
-}
-
-std::string OpenAIProvider::JsonEscape(const std::string& s) {
-    std::string out;
-    out.reserve(s.size());
-    for (char c : s) {
-        switch (c) {
-        case '"':  out += "\\\""; break;
-        case '\\': out += "\\\\"; break;
-        case '\n': out += "\\n";  break;
-        case '\r': out += "\\r";  break;
-        case '\t': out += "\\t";  break;
-        default:   out += c;      break;
-        }
-    }
-    return out;
 }

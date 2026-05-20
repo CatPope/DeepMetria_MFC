@@ -1,8 +1,7 @@
 #include "stdafx.h"
 #include "DashboardView.h"
-
-// Renderer는 .cpp에서만 include (전방 선언으로 헤더 의존성 최소화)
-// #include "../Renderer/ChartRenderer.h"  // ChartRenderer 구현 완료 후 활성화
+#include "../Domain/Orchestrator/AnalysisFlow.h"
+#include "../Renderer/ChartRenderer.h"
 
 // ============================================================
 // IMPLEMENT_DYNCREATE / 메시지 맵
@@ -23,6 +22,7 @@ END_MESSAGE_MAP()
 // ============================================================
 CDashboardView::CDashboardView()
     : CScrollView()
+    , m_nHoverCard(-1)
 {
 }
 
@@ -37,6 +37,13 @@ void CDashboardView::OnInitialUpdate()
 {
     CScrollView::OnInitialUpdate();
     RecalcScrollSize();
+
+    // 툴팁 초기화
+    m_toolTip.Create(this, TTS_ALWAYSTIP | TTS_NOPREFIX);
+    m_toolTip.SetMaxTipWidth(400);
+    m_toolTip.SetDelayTime(TTDT_AUTOPOP, 15000); // 15초간 표시
+    m_toolTip.AddTool(this, _T(""));
+    m_toolTip.Activate(TRUE);
 }
 
 void CDashboardView::OnUpdate(CView* pSender, LPARAM lHint, CObject* pHint)
@@ -187,12 +194,14 @@ void CDashboardView::DrawCard(CDC* pDC, int index, const CRect& rect)
 
     // 차트 영역 (제목 아래)
     CRect chartRect = rect;
-    chartRect.top += 28; // 제목 높이만큼 내림
-    chartRect.DeflateRect(4, 4);
+    chartRect.top += 44; // 제목 높이(2줄) 만큼 내림
+    chartRect.DeflateRect(4, 0, 4, 4);
 
-    // ChartRenderer 연동 (구현 완료 후 활성화)
-    // ChartRenderer::Render(pDC, viz.chartConfig, chartRect);
-    DrawPlaceholder(pDC, chartRect, viz.vizType);
+    // ChartRenderer로 실제 차트 렌더링
+    if (!viz.chartConfig.dataJson.IsEmpty())
+        CChartRenderer::Render(pDC, chartRect, viz.chartConfig);
+    else
+        DrawPlaceholder(pDC, chartRect, viz.vizType);
 }
 
 void CDashboardView::DrawCardBackground(CDC* pDC, const CRect& rect, BOOL bSelected)
@@ -219,8 +228,8 @@ void CDashboardView::DrawCardBackground(CDC* pDC, const CRect& rect, BOOL bSelec
 void CDashboardView::DrawCardTitle(CDC* pDC, const CRect& rect, const CString& title)
 {
     CRect titleRect = rect;
-    titleRect.bottom = titleRect.top + 28;
-    titleRect.DeflateRect(8, 4);
+    titleRect.bottom = titleRect.top + 44;
+    titleRect.DeflateRect(8, 4, 8, 2);
 
     pDC->SetTextColor(RGB(32, 32, 32));
     pDC->SetBkMode(TRANSPARENT);
@@ -228,13 +237,14 @@ void CDashboardView::DrawCardTitle(CDC* pDC, const CRect& rect, const CString& t
     CFont* pOldFont = nullptr;
     CFont titleFont;
     LOGFONT lf = {};
-    lf.lfHeight = -14;
+    lf.lfHeight = -12;
     lf.lfWeight = FW_SEMIBOLD;
     _tcscpy_s(lf.lfFaceName, _T("Segoe UI"));
     if (titleFont.CreateFontIndirect(&lf))
         pOldFont = pDC->SelectObject(&titleFont);
 
-    pDC->DrawText(title, &titleRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    // 2줄 워드랩 + 말줄임
+    pDC->DrawText(title, &titleRect, DT_LEFT | DT_WORDBREAK | DT_END_ELLIPSIS);
 
     if (pOldFont)
         pDC->SelectObject(pOldFont);
@@ -284,9 +294,23 @@ void CDashboardView::OnLButtonDblClk(UINT nFlags, CPoint point)
     CScrollView::OnLButtonDblClk(nFlags, point);
 }
 
-// post-MVP: 드래그 앤 드롭 카드 순서 변경 (빈 핸들러)
 void CDashboardView::OnMouseMove(UINT nFlags, CPoint point)
 {
+    int idx = HitTestCard(point);
+    if (idx != m_nHoverCard)
+    {
+        m_nHoverCard = idx;
+        if (idx >= 0 && idx < (int)m_visualizations.size())
+        {
+            // 카드 제목 전체를 툴팁으로 표시
+            m_toolTip.UpdateTipText(m_visualizations[idx].title, this);
+            m_toolTip.Activate(TRUE);
+        }
+        else
+        {
+            m_toolTip.Activate(FALSE);
+        }
+    }
     CScrollView::OnMouseMove(nFlags, point);
 }
 
@@ -295,11 +319,41 @@ void CDashboardView::OnLButtonUp(UINT nFlags, CPoint point)
     CScrollView::OnLButtonUp(nFlags, point);
 }
 
-// WM_VISUALIZATION_READY: 새 시각화 카드 추가 후 화면 갱신
+BOOL CDashboardView::PreTranslateMessage(MSG* pMsg)
+{
+    if (m_toolTip.GetSafeHwnd())
+        m_toolTip.RelayEvent(pMsg);
+    return CScrollView::PreTranslateMessage(pMsg);
+}
+
+// WM_VISUALIZATION_READY: AnalysisFlow에서 시각화 카드 생성
 LRESULT CDashboardView::OnVisualizationReady(WPARAM wParam, LPARAM lParam)
 {
-    // WPARAM: vizId (미사용, 문서 갱신으로 처리)
-    // 실제 VisualizationInfo는 Document에서 조회
-    InvalidateRect(nullptr);
+    AnalysisFlow* pFlow = reinterpret_cast<AnalysisFlow*>(lParam);
+    if (!pFlow)
+    {
+        InvalidateRect(nullptr);
+        return 0;
+    }
+
+    // AnalysisFlow → VisualizationInfo 변환
+    VisualizationInfo viz;
+
+    // 고유 ID 생성 (타임스탬프 기반)
+    viz.id.Format(_T("viz_%I64d"), (INT64)::GetTickCount64());
+
+    // 차트 설정 반영 (ChartSelector가 이미 dataJson을 차트 형식으로 변환함)
+    viz.chartConfig = pFlow->chartConfig;
+    viz.vizType     = pFlow->chartConfig.chartType;
+
+    // 제목: 인사이트 또는 질문
+    if (!pFlow->insight.IsEmpty())
+        viz.title = pFlow->insight;
+    else
+        viz.title = pFlow->question;
+
+    AddVisualization(viz);
+
+    delete pFlow;
     return 0;
 }

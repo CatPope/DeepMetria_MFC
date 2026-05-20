@@ -114,6 +114,45 @@ CString AnalysisTools::BasicStats(const DataTable& data)
 }
 
 // ============================================================
+// FormatGroupResults — GroupByAggregate 집계 결과 JSON 직렬화 헬퍼
+// ============================================================
+/*static*/ CString AnalysisTools::FormatGroupResults(
+    const std::map<CString, std::vector<double>>& groups,
+    const CString& aggFunc)
+{
+    CString json;
+    bool first = true;
+
+    for (const auto& kv : groups) {
+        const std::vector<double>& vals = kv.second;
+        double aggVal = 0.0;
+
+        if (aggFunc.CompareNoCase(_T("sum")) == 0) {
+            for (double v : vals) aggVal += v;
+        } else if (aggFunc.CompareNoCase(_T("avg")) == 0) {
+            aggVal = CalcMean(vals);
+        } else if (aggFunc.CompareNoCase(_T("count")) == 0) {
+            aggVal = static_cast<double>(vals.size());
+        } else if (aggFunc.CompareNoCase(_T("min")) == 0) {
+            aggVal = *std::min_element(vals.begin(), vals.end());
+        } else if (aggFunc.CompareNoCase(_T("max")) == 0) {
+            aggVal = *std::max_element(vals.begin(), vals.end());
+        } else {
+            for (double v : vals) aggVal += v; // 기본 sum
+        }
+
+        if (!first) json += _T(",");
+        first = false;
+        CString entry;
+        entry.Format(_T("{\"group\":\"%s\",\"value\":%.4f}"),
+                     (LPCTSTR)EscapeJsonString(kv.first), aggVal);
+        json += entry;
+    }
+
+    return json;
+}
+
+// ============================================================
 // GroupByAggregate
 // ============================================================
 CString AnalysisTools::GroupByAggregate(const DataTable& data,
@@ -143,34 +182,7 @@ CString AnalysisTools::GroupByAggregate(const DataTable& data,
                  + _T("\",\"value_col\":\"") + EscapeJsonString(valueCol)
                  + _T("\",\"agg_func\":\"") + EscapeJsonString(aggFunc)
                  + _T("\",\"results\":[");
-    bool first = true;
-
-    for (const auto& kv : groups) {
-        const std::vector<double>& vals = kv.second;
-        double aggVal = 0.0;
-
-        if (aggFunc.CompareNoCase(_T("sum")) == 0) {
-            for (double v : vals) aggVal += v;
-        } else if (aggFunc.CompareNoCase(_T("avg")) == 0) {
-            aggVal = CalcMean(vals);
-        } else if (aggFunc.CompareNoCase(_T("count")) == 0) {
-            aggVal = static_cast<double>(vals.size());
-        } else if (aggFunc.CompareNoCase(_T("min")) == 0) {
-            aggVal = *std::min_element(vals.begin(), vals.end());
-        } else if (aggFunc.CompareNoCase(_T("max")) == 0) {
-            aggVal = *std::max_element(vals.begin(), vals.end());
-        } else {
-            for (double v : vals) aggVal += v; // 기본 sum
-        }
-
-        if (!first) json += _T(",");
-        first = false;
-        CString entry;
-        entry.Format(_T("{\"group\":\"%s\",\"value\":%.4f}"),
-                     (LPCTSTR)EscapeJsonString(kv.first), aggVal);
-        json += entry;
-    }
-
+    json += FormatGroupResults(groups, aggFunc);
     json += _T("]}");
     return json;
 }
@@ -184,6 +196,26 @@ CString AnalysisTools::TimeSeriesAnalysis(const DataTable& data,
 {
     // DateGroupAggregate(month) 위임
     return DateGroupAggregate(data, dateCol, valueCol, _T("month"));
+}
+
+// ============================================================
+// CalcCorrelation — 피어슨 상관계수 계산 헬퍼
+// ============================================================
+/*static*/ double AnalysisTools::CalcCorrelation(const std::vector<double>& x,
+                                                  const std::vector<double>& y)
+{
+    double meanX = CalcMean(x);
+    double meanY = CalcMean(y);
+    size_t minLen = min(x.size(), y.size());
+    double num = 0.0, dx = 0.0, dy = 0.0;
+    for (size_t k = 0; k < minLen; ++k) {
+        double a = x[k] - meanX;
+        double b = y[k] - meanY;
+        num += a * b;
+        dx  += a * a;
+        dy  += b * b;
+    }
+    return (dx > 0.0 && dy > 0.0) ? num / std::sqrt(dx * dy) : 0.0;
 }
 
 // ============================================================
@@ -217,8 +249,6 @@ CString AnalysisTools::CorrelationMatrix(const DataTable&         data,
     for (size_t i = 0; i < nc; ++i) {
         if (i > 0) json += _T(",");
         json += _T("[");
-        const auto& xi = colData[i];
-        double meanI = CalcMean(xi);
 
         for (size_t j = 0; j < nc; ++j) {
             if (j > 0) json += _T(",");
@@ -226,18 +256,7 @@ CString AnalysisTools::CorrelationMatrix(const DataTable&         data,
                 json += _T("1.0000");
                 continue;
             }
-            const auto& xj = colData[j];
-            double meanJ = CalcMean(xj);
-            size_t minLen = min(xi.size(), xj.size());
-            double num = 0.0, di = 0.0, dj = 0.0;
-            for (size_t k = 0; k < minLen; ++k) {
-                double a = xi[k] - meanI;
-                double b = xj[k] - meanJ;
-                num += a * b;
-                di  += a * a;
-                dj  += b * b;
-            }
-            double corr = (di > 0.0 && dj > 0.0) ? num / std::sqrt(di * dj) : 0.0;
+            double corr = CalcCorrelation(colData[i], colData[j]);
             CString val;
             val.Format(_T("%.4f"), corr);
             json += val;
@@ -565,6 +584,55 @@ CString AnalysisTools::Filtering(const DataTable& data,
 }
 
 // ============================================================
+// FormatPivotResults — PivotTable 집계 결과 JSON 직렬화 헬퍼
+// ============================================================
+/*static*/ CString AnalysisTools::FormatPivotResults(
+    const std::map<CString, std::map<CString, std::vector<double>>>& pivot,
+    const CString& aggFunc)
+{
+    // colHeaders를 pivot에서 재수집
+    std::map<CString, int> colHeaders;
+    for (const auto& row : pivot)
+        for (const auto& cell : row.second)
+            colHeaders[cell.first]++;
+
+    CString json;
+    bool first = true;
+    for (const auto& row : pivot) {
+        if (!first) json += _T(",");
+        first = false;
+        json += _T("{\"row\":\"") + EscapeJsonString(row.first) + _T("\",\"values\":{");
+        bool firstC = true;
+        for (const auto& ch : colHeaders) {
+            if (!firstC) json += _T(",");
+            firstC = false;
+            auto it = row.second.find(ch.first);
+            double aggVal = 0.0;
+            if (it != row.second.end()) {
+                const auto& vals = it->second;
+                if (aggFunc.CompareNoCase(_T("sum")) == 0)
+                    for (double v : vals) aggVal += v;
+                else if (aggFunc.CompareNoCase(_T("avg")) == 0)
+                    aggVal = CalcMean(vals);
+                else if (aggFunc.CompareNoCase(_T("count")) == 0)
+                    aggVal = static_cast<double>(vals.size());
+                else if (aggFunc.CompareNoCase(_T("min")) == 0)
+                    aggVal = *std::min_element(vals.begin(), vals.end());
+                else if (aggFunc.CompareNoCase(_T("max")) == 0)
+                    aggVal = *std::max_element(vals.begin(), vals.end());
+                else
+                    for (double v : vals) aggVal += v;
+            }
+            CString val;
+            val.Format(_T("\"%s\":%.4f"), (LPCTSTR)EscapeJsonString(ch.first), aggVal);
+            json += val;
+        }
+        json += _T("}}");
+    }
+    return json;
+}
+
+// ============================================================
 // PivotTable
 // ============================================================
 CString AnalysisTools::PivotTable(const DataTable& data,
@@ -610,40 +678,7 @@ CString AnalysisTools::PivotTable(const DataTable& data,
         json += _T("\"") + EscapeJsonString(ch.first) + _T("\"");
     }
     json += _T("],\"rows\":[");
-
-    first = true;
-    for (const auto& row : cells) {
-        if (!first) json += _T(",");
-        first = false;
-        json += _T("{\"row\":\"") + EscapeJsonString(row.first) + _T("\",\"values\":{");
-        bool firstC = true;
-        for (const auto& ch : colHeaders) {
-            if (!firstC) json += _T(",");
-            firstC = false;
-            auto it = row.second.find(ch.first);
-            double aggVal = 0.0;
-            if (it != row.second.end()) {
-                const auto& vals = it->second;
-                if (aggFunc.CompareNoCase(_T("sum")) == 0)
-                    for (double v : vals) aggVal += v;
-                else if (aggFunc.CompareNoCase(_T("avg")) == 0)
-                    aggVal = CalcMean(vals);
-                else if (aggFunc.CompareNoCase(_T("count")) == 0)
-                    aggVal = static_cast<double>(vals.size());
-                else if (aggFunc.CompareNoCase(_T("min")) == 0)
-                    aggVal = *std::min_element(vals.begin(), vals.end());
-                else if (aggFunc.CompareNoCase(_T("max")) == 0)
-                    aggVal = *std::max_element(vals.begin(), vals.end());
-                else
-                    for (double v : vals) aggVal += v;
-            }
-            CString val;
-            val.Format(_T("\"%s\":%.4f"), (LPCTSTR)EscapeJsonString(ch.first), aggVal);
-            json += val;
-        }
-        json += _T("}}");
-    }
-
+    json += FormatPivotResults(cells, aggFunc);
     json += _T("]}");
     return json;
 }

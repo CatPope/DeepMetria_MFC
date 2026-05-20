@@ -3,6 +3,7 @@
 
 #include "stdafx.h"
 #include "DeepMetriaDoc.h"
+#include "../Infrastructure/Parser/CSVParser.h"
 
 // ============================================================
 // IMPLEMENT_DYNCREATE
@@ -70,9 +71,7 @@ BOOL CDeepMetriaDoc::LoadFile(const CString& filePath, AppError& outError)
     CString ext = filePath.Mid(filePath.ReverseFind(L'.') + 1);
     ext.MakeLower();
 
-    // ---- 파서 호출 (스켈레톤: 실제 파서는 Infrastructure/Parser에서 구현) ----
-    // CSV:  CSVParser::Parse(filePath, m_dataTable, outError)
-    // XLSX: ExcelParser::Parse(filePath, m_dataTable, outError)
+    // 파일 형식 확인
     if (ext != _T("csv") && ext != _T("xlsx") && ext != _T("xls"))
     {
         outError = AppError(_T("UNSUPPORTED_FILE_TYPE"),
@@ -80,10 +79,86 @@ BOOL CDeepMetriaDoc::LoadFile(const CString& filePath, AppError& outError)
         return FALSE;
     }
 
-    // 스켈레톤: 파일 이름만 DataTable에 기록
-    m_dataTable          = DataTable();
+    // CSV 파서 호출
+    if (ext == _T("csv"))
+    {
+        m_dataTable = CSVParser::Parse(filePath, outError);
+        if (m_dataTable.headers.empty() && outError.IsError())
+            return FALSE;
+    }
+    else
+    {
+        // XLSX: 미구현 — 스켈레톤
+        m_dataTable          = DataTable();
+        m_dataTable.fileName = filePath;
+        m_dataTable.rowCount = 0;
+    }
+
     m_dataTable.fileName = filePath;
-    m_dataTable.rowCount = 0;
+
+    // 행 기반 데이터 → 컬럼 기반 데이터 변환 (columns 필드 채우기)
+    m_dataTable.columns.clear();
+    for (int c = 0; c < m_dataTable.colCount; ++c)
+    {
+        DataColumn dc;
+        dc.name = (c < (int)m_dataTable.headers.size()) ? m_dataTable.headers[c] : _T("");
+
+        // 값 수집
+        for (const auto& row : m_dataTable.rows)
+        {
+            if (c < (int)row.size())
+                dc.values.push_back(row[c]);
+            else
+                dc.values.push_back(_T(""));
+        }
+
+        // 타입 추론: 비어있지 않은 값 중 숫자가 아닌 것이 있으면 "text"
+        bool allNumeric = true;
+        for (const auto& v : dc.values)
+        {
+            if (v.IsEmpty()) continue;
+            TCHAR* endPtr = nullptr;
+            _tcstod(v, &endPtr);
+            if (endPtr == (LPCTSTR)v || *endPtr != _T('\0'))
+            {
+                allNumeric = false;
+                break;
+            }
+        }
+        dc.type = allNumeric ? _T("numeric") : _T("text");
+
+        m_dataTable.columns.push_back(dc);
+    }
+
+    // DataSummary 생성
+    m_dataSummary = DataSummary();
+    m_dataSummary.datasourceId = filePath;
+    m_dataSummary.rowCount     = m_dataTable.rowCount;
+    m_dataSummary.columnCount  = m_dataTable.colCount;
+
+    for (int c = 0; c < (int)m_dataTable.columns.size(); ++c)
+    {
+        const DataColumn& dc = m_dataTable.columns[c];
+        ColumnSchema cs;
+        cs.name  = dc.name;
+        cs.type  = dc.type;
+        cs.index = c;
+
+        // 결측치 계산
+        cs.nullCount = 0;
+        for (const auto& v : dc.values)
+            if (v.IsEmpty()) cs.nullCount++;
+
+        // 샘플값 (최대 5개)
+        int sampleCount = (std::min)(5, (int)dc.values.size());
+        for (int i = 0; i < sampleCount; ++i)
+        {
+            if (i > 0) cs.sampleValues += _T(", ");
+            cs.sampleValues += dc.values[i];
+        }
+
+        m_dataSummary.schema.push_back(cs);
+    }
 
     // 문서 수정 플래그 해제 (저장 프롬프트 방지)
     SetModifiedFlag(FALSE);

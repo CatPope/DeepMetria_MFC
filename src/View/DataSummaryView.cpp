@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "DataSummaryView.h"
+#include "../Document/DeepMetriaDoc.h"
 
 // ============================================================
 // IMPLEMENT_DYNCREATE / 메시지 맵
@@ -43,7 +44,14 @@ void CDataSummaryView::OnInitialUpdate()
 
 void CDataSummaryView::OnUpdate(CView* pSender, LPARAM lHint, CObject* pHint)
 {
-    // lHint로 필요 시 부분 갱신 가능 (현재는 전체 갱신)
+    // 문서에서 DataSummary 읽기
+    CDeepMetriaDoc* pDoc = dynamic_cast<CDeepMetriaDoc*>(GetDocument());
+    if (pDoc)
+    {
+        const DataSummary& summary = pDoc->GetDataSummary();
+        if (!summary.schema.empty())
+            m_summary = summary;
+    }
     PopulateList();
 }
 

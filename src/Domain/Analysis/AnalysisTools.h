@@ -4,6 +4,7 @@
 // Architecture §5.1 / DetailedSpec §4.1 참조
 
 #include "../../Common/Types.h"
+#include <map>
 #include <vector>
 
 // ============================================================
@@ -93,4 +94,15 @@ private:
 
     // JSON 직렬화 헬퍼
     static CString EscapeJsonString(const CString& s);
+
+    // GroupByAggregate 집계 결과 JSON 직렬화 헬퍼
+    static CString FormatGroupResults(const std::map<CString, std::vector<double>>& groups,
+                                      const CString& aggFunc);
+
+    // CorrelationMatrix 피어슨 상관계수 계산 헬퍼
+    static double CalcCorrelation(const std::vector<double>& x, const std::vector<double>& y);
+
+    // PivotTable 집계 결과 JSON 직렬화 헬퍼
+    static CString FormatPivotResults(const std::map<CString, std::map<CString, std::vector<double>>>& pivot,
+                                      const CString& aggFunc);
 };

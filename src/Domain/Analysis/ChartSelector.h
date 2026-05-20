@@ -25,4 +25,14 @@ private:
 
     // 결과 JSON에서 title 후보 생성
     static CString BuildDefaultTitle(const CString& toolName, const DataTable& data);
+
+    // 분석 결과 JSON → 차트 데이터 JSON 변환
+    // BarChart: {"labels":[...], "datasets":[{"name":"...", "values":[...]}]}
+    static CString ConvertToChartData(const CString& toolName, const CString& analysisResult);
+
+    // 표준 차트 JSON 포맷 생성 헬퍼
+    // {"labels":[labels],"datasets":[{"name":"datasetName","values":[values]}]}
+    static CString BuildChartJson(const CString& labels,
+                                  const CString& values,
+                                  const CString& datasetName);
 };

@@ -33,7 +33,7 @@ protected:
     // 카드 레이아웃 설정
     static const int CARD_MARGIN  = 8;   // 카드 간격 (px)
     static const int CARD_COLS    = 2;   // 그리드 열 수
-    static const int CARD_H       = 240; // 카드 높이 (px)
+    static const int CARD_H       = 320; // 카드 높이 (px)
 
     // 선택된 카드 ID
     CString m_selectedVizId;
@@ -49,6 +49,7 @@ protected:
     virtual void OnInitialUpdate() override;
     virtual void OnDraw(CDC* pDC) override;
     virtual void OnUpdate(CView* pSender, LPARAM lHint, CObject* pHint) override;
+    virtual BOOL PreTranslateMessage(MSG* pMsg) override;
 
     // 메시지 핸들러
     afx_msg void OnSize(UINT nType, int cx, int cy);
@@ -69,4 +70,8 @@ private:
     void DrawCardBackground(CDC* pDC, const CRect& rect, BOOL bSelected);
     void DrawCardTitle(CDC* pDC, const CRect& rect, const CString& title);
     void DrawPlaceholder(CDC* pDC, const CRect& rect, const CString& vizType);
+
+    // 툴팁
+    CToolTipCtrl m_toolTip;
+    int          m_nHoverCard;  // 현재 호버 중인 카드 인덱스
 };

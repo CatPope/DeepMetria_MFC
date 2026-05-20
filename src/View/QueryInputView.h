@@ -1,6 +1,6 @@
 #pragma once
 
-// QueryInputView.h — 자연어 질문 입력 폼 뷰
+// QueryInputView.h — 자연어 질문 입력 뷰
 // 분석 시작, 진행률 표시, 결과 반영
 // Architecture §3 / DetailedSpec §3.3 참조
 
@@ -8,20 +8,18 @@
 #include "../Resources/resource.h"
 
 // 전방 선언
-class AnalysisOrchestrator;
 class CDashboardView;
 
+#include "../Domain/Orchestrator/AnalysisOrchestrator.h"
+
 // ============================================================
-// CQueryInputView — CFormView 파생
+// CQueryInputView — CView 파생 (컨트롤 수동 생성)
 // ============================================================
-class CQueryInputView : public CFormView
+class CQueryInputView : public CView
 {
     DECLARE_DYNCREATE(CQueryInputView)
 
 public:
-    // IDD 리소스 ID (리소스 파일에 정의 필요)
-    enum { IDD = IDD_QUERYINPUT_FORM };
-
     CQueryInputView();
     virtual ~CQueryInputView();
 
@@ -41,9 +39,13 @@ protected:
     BOOL          m_bAnalyzing;     // 분석 진행 중 여부
     CDashboardView* m_pDashboardView; // 결과 전달 대상 뷰
 
-    // CFormView 오버라이드
-    virtual void DoDataExchange(CDataExchange* pDX) override;
-    virtual void OnInitialUpdate() override;
+    // CView 오버라이드
+    virtual void OnDraw(CDC* pDC) override;
+    virtual void OnUpdate(CView* pSender, LPARAM lHint, CObject* pHint) override;
+
+    // 메시지 핸들러
+    afx_msg int  OnCreate(LPCREATESTRUCT lpCreateStruct);
+    afx_msg void OnSize(UINT nType, int cx, int cy);
 
     // 버튼 핸들러
     afx_msg void OnBnClickedAnalyze();
@@ -61,4 +63,7 @@ private:
     void StartAnalysis();
     void SetAnalyzingState(BOOL bAnalyzing);
     void UpdateStatusText(const CString& text);
+    void LayoutControls();
+
+    AnalysisOrchestrator m_orchestrator; // CoT 분석 엔진
 };

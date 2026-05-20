@@ -1,8 +1,10 @@
 // DeepMetria.rc - MFC resource file
-#pragma code_page(65001)
 
 #include "resource.h"
 #include "afxres.h"
+
+// UTF-8 code page for Korean strings — MUST come after standard includes
+#pragma code_page(65001)
 
 // ============================================================
 // 버전 정보
@@ -98,9 +100,9 @@ END
 // About 다이얼로그 (IDD_ABOUTBOX)
 // ============================================================
 IDD_ABOUTBOX DIALOGEX 0, 0, 320, 150
-STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "DeepMetria 정보"
-FONT 9, "굴림", 400, 0, 0x1
+FONT 9, "MS Shell Dlg 2", 400, 0, 0x1
 BEGIN
     ICON            IDR_MAINFRAME, IDC_STATIC, 11, 11, 20, 20
     LTEXT           "DeepMetria",
@@ -118,14 +120,75 @@ END
 // QueryInput 폼 다이얼로그 (IDD_QUERYINPUT_FORM)
 // ============================================================
 IDD_QUERYINPUT_FORM DIALOGEX 0, 0, 500, 60
-STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD | WS_VISIBLE
-FONT 9, "굴림", 400, 0, 0x1
+STYLE DS_SETFONT | WS_CHILD | WS_VISIBLE
+FONT 9, "MS Shell Dlg 2", 400, 0, 0x1
 BEGIN
     EDITTEXT        IDC_EDIT_QUERY,    4,  8, 380, 14, ES_AUTOHSCROLL
     PUSHBUTTON      "분석(&A)",        IDC_BTN_ANALYZE,   390,  6, 50, 18
     LTEXT           "",                IDC_STATIC_STATUS,   4, 30, 380,  8
     CONTROL         "",                IDC_PROGRESS_BAR, "msctls_progress32",
                     WS_CHILD | WS_VISIBLE, 4, 42, 380, 10
+END
+
+// ============================================================
+// Settings 다이얼로그 (IDD_SETTINGS)
+// ============================================================
+IDD_SETTINGS DIALOGEX 0, 0, 280, 140
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "LLM 설정"
+FONT 9, "MS Shell Dlg 2", 400, 0, 0x1
+BEGIN
+    LTEXT           "Provider:",     IDC_STATIC,        10, 14, 45, 8
+    COMBOBOX        IDC_COMBO_PROVIDER,                  60, 12, 100, 80,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+
+    LTEXT           "API Key:",      IDC_STATIC,        10, 36, 45, 8
+    EDITTEXT        IDC_EDIT_API_KEY,                    60, 34, 205, 14,
+                    ES_AUTOHSCROLL | ES_PASSWORD
+
+    LTEXT           "Model:",        IDC_STATIC,        10, 58, 45, 8
+    COMBOBOX        IDC_COMBO_MODEL,                     60, 56, 150, 80,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+
+    PUSHBUTTON      "연결 테스트",   IDC_BTN_TEST,      60, 80, 70, 16
+
+    DEFPUSHBUTTON   "확인",          IDOK,             130, 115, 60, 14
+    PUSHBUTTON      "취소",          IDCANCEL,         200, 115, 60, 14
+END
+
+// ============================================================
+// Export 다이얼로그 (IDD_EXPORT)
+// ============================================================
+IDD_EXPORT DIALOGEX 0, 0, 320, 180
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "내보내기"
+FONT 9, "MS Shell Dlg 2", 400, 0, 0x1
+BEGIN
+    LTEXT           "형식:",         IDC_STATIC,        10, 12, 30, 8
+    COMBOBOX        IDC_COMBO_FORMAT,                    50, 10, 100, 80,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+
+    LTEXT           "저장 경로:",    IDC_STATIC,        10, 34, 40, 8
+    EDITTEXT        IDC_EDIT_PATH,                       50, 32, 200, 14,
+                    ES_AUTOHSCROLL | ES_READONLY
+    PUSHBUTTON      "...",           IDC_BTN_BROWSE,    255, 31, 30, 16
+
+    LTEXT           "너비:",         IDC_STATIC,        10, 58, 30, 8
+    EDITTEXT        IDC_EDIT_WIDTH,                      50, 56, 50, 14,
+                    ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",              IDC_SPIN_WIDTH,    "msctls_updown32",
+                    UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY |
+                    UDS_ARROWKEYS, 90, 56, 11, 14
+
+    LTEXT           "높이:",         IDC_STATIC,        120, 58, 30, 8
+    EDITTEXT        IDC_EDIT_HEIGHT,                     155, 56, 50, 14,
+                    ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",              IDC_SPIN_HEIGHT,   "msctls_updown32",
+                    UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY |
+                    UDS_ARROWKEYS, 195, 56, 11, 14
+
+    PUSHBUTTON      "내보내기",      IDC_BTN_EXPORT,    50, 85, 80, 16
+    DEFPUSHBUTTON   "닫기",          IDCANCEL,          230, 155, 60, 14
 END
 
 // ============================================================

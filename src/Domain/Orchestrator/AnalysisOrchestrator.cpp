@@ -8,6 +8,8 @@
 #include "../Analysis/AnalysisTools.h"
 #include "../Analysis/ChartSelector.h"
 
+#include <memory>
+
 // ============================================================
 // AnalysisOrchestrator 구현
 // Architecture §5 / DetailedSpec §4 CoT 흐름 참조
@@ -88,24 +90,25 @@ AnalysisFlowState AnalysisOrchestrator::GetCurrentState() const
 
 UINT AnalysisOrchestrator::AnalysisThreadProc(LPVOID pParam)
 {
-    OrchestratorThreadParam* p = static_cast<OrchestratorThreadParam*>(pParam);
-    AnalysisOrchestrator*    pSelf = p->pOrchestrator;
+    // RAII: p와 pFlow 모두 unique_ptr로 소유권 관리
+    std::unique_ptr<OrchestratorThreadParam> p(static_cast<OrchestratorThreadParam*>(pParam));
+    AnalysisOrchestrator* pSelf = p->pOrchestrator;
 
     // heap 할당 — 완료 메시지 LPARAM으로 수신 측에 전달, 수신 측에서 delete
-    AnalysisFlow* pFlow = new AnalysisFlow();
+    std::unique_ptr<AnalysisFlow> pFlow(new AnalysisFlow());
     pFlow->question = p->question;
 
     HWND hWnd = p->hNotifyWnd;
 
-    // 취소 시 pFlow를 해제하고 WM_ANALYSIS_DONE을 전송하는 헬퍼 매크로
-    // (수신 측이 nullptr을 받으면 취소로 처리 — 소유권: 이 스레드)
+    // 취소 시 pFlow 소유권을 해제하지 않고 WM_ANALYSIS_DONE(nullptr)을 전송하는 헬퍼 매크로
+    // (수신 측이 nullptr을 받으면 취소로 처리 — p는 스코프 종료 시 자동 해제)
 #define CHECK_CANCELLED() \
     if (pSelf && pSelf->IsCancelled()) { \
+        pSelf->m_state.store(AnalysisFlowState::Idle); \
         pFlow->state = AnalysisFlowState::Idle; \
-        delete pFlow; \
+        pFlow.reset(); \
         if (::IsWindow(hWnd)) \
             ::PostMessage(hWnd, WM_ANALYSIS_DONE, 0, 0); \
-        delete p; \
         return 0; \
     }
 
@@ -118,62 +121,66 @@ UINT AnalysisOrchestrator::AnalysisThreadProc(LPVOID pParam)
     AppError err;
     if (!Step1_Plan(*pFlow, *p->pData, *p->pSummary, hWnd, err)) {
         pFlow->SetError(err);
+        pSelf->m_state.store(AnalysisFlowState::Error);
         if (::IsWindow(hWnd))
-            ::PostMessage(hWnd, WM_ANALYSIS_DONE, 0, reinterpret_cast<LPARAM>(pFlow));
-        delete p;
+            ::PostMessage(hWnd, WM_ANALYSIS_DONE, 0, reinterpret_cast<LPARAM>(pFlow.release()));
         return 1;
     }
 
     // ── 2단계: 분석 도구 실행 ─────────────────────────────
     CHECK_CANCELLED();  // 1단계 완료 후 취소 확인
     pFlow->state = AnalysisFlowState::Executing;
+    pSelf->m_state.store(AnalysisFlowState::Executing);
     if (::IsWindow(hWnd))
         ::PostMessage(hWnd, WM_ANALYSIS_PROGRESS, 2, 0);
 
     if (!Step2_Execute(*pFlow, *p->pData, hWnd, err)) {
         pFlow->SetError(err);
+        pSelf->m_state.store(AnalysisFlowState::Error);
         if (::IsWindow(hWnd))
-            ::PostMessage(hWnd, WM_ANALYSIS_DONE, 0, reinterpret_cast<LPARAM>(pFlow));
-        delete p;
+            ::PostMessage(hWnd, WM_ANALYSIS_DONE, 0, reinterpret_cast<LPARAM>(pFlow.release()));
         return 1;
     }
 
     // ── 3단계: 인사이트 생성 ──────────────────────────────
     CHECK_CANCELLED();  // 2단계 완료 후 취소 확인
     pFlow->state = AnalysisFlowState::Interpreting;
+    pSelf->m_state.store(AnalysisFlowState::Interpreting);
     if (::IsWindow(hWnd))
         ::PostMessage(hWnd, WM_ANALYSIS_PROGRESS, 3, 0);
 
     if (!Step3_Interpret(*pFlow, *p->pData, hWnd, err)) {
         pFlow->SetError(err);
+        pSelf->m_state.store(AnalysisFlowState::Error);
         if (::IsWindow(hWnd))
-            ::PostMessage(hWnd, WM_ANALYSIS_DONE, 0, reinterpret_cast<LPARAM>(pFlow));
-        delete p;
+            ::PostMessage(hWnd, WM_ANALYSIS_DONE, 0, reinterpret_cast<LPARAM>(pFlow.release()));
         return 1;
     }
 
     // ── 4단계: 차트 유형 결정 ─────────────────────────────
     CHECK_CANCELLED();  // 3단계 완료 후 취소 확인
     pFlow->state = AnalysisFlowState::Visualizing;
+    pSelf->m_state.store(AnalysisFlowState::Visualizing);
     if (::IsWindow(hWnd))
         ::PostMessage(hWnd, WM_ANALYSIS_PROGRESS, 4, 0);
 
     if (!Step4_Visualize(*pFlow, *p->pData, hWnd, err)) {
         pFlow->SetError(err);
+        pSelf->m_state.store(AnalysisFlowState::Error);
         if (::IsWindow(hWnd))
-            ::PostMessage(hWnd, WM_ANALYSIS_DONE, 0, reinterpret_cast<LPARAM>(pFlow));
-        delete p;
+            ::PostMessage(hWnd, WM_ANALYSIS_DONE, 0, reinterpret_cast<LPARAM>(pFlow.release()));
         return 1;
     }
 
 #undef CHECK_CANCELLED
 
-    // ── 완료 ──────────────────────────────────────────────
+    // ── 완료: pFlow 소유권을 수신 측에 이전 (release) ────
     pFlow->state = AnalysisFlowState::Done;
+    pSelf->m_state.store(AnalysisFlowState::Done);
     if (::IsWindow(hWnd))
-        ::PostMessage(hWnd, WM_ANALYSIS_DONE, 0, reinterpret_cast<LPARAM>(pFlow));
+        ::PostMessage(hWnd, WM_ANALYSIS_DONE, 0, reinterpret_cast<LPARAM>(pFlow.release()));
 
-    delete p;
+    // p는 스코프 종료 시 unique_ptr에 의해 자동 해제
     return 0;
 }
 

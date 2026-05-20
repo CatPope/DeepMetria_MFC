@@ -12,7 +12,8 @@ echo.
 echo === DeepMetria MFC Build (%CONFIG% x64) ===
 echo.
 
-"C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" DeepMetria.vcxproj /p:Configuration=%CONFIG% /p:Platform=x64 /p:VCToolsVersion=14.44.35207 /m /v:minimal
+set EXTRA=%~2
+"C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" DeepMetria.vcxproj /p:Configuration=%CONFIG% /p:Platform=x64 /p:VCToolsVersion=14.44.35207 /m /v:minimal %EXTRA%
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
