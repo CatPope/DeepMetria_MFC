@@ -107,6 +107,7 @@
     <ClCompile Include="src\Domain\Orchestrator\AnalysisFlow.cpp" />
     <ClCompile Include="src\Domain\Orchestrator\AnalysisOrchestrator.cpp" />
     <ClCompile Include="src\Infrastructure\Cache\AnalysisCache.cpp" />
+    <ClCompile Include="src\Infrastructure\CrashRecovery\CrashRecoveryManager.cpp" />
     <ClCompile Include="src\Infrastructure\LLM\ClaudeProvider.cpp" />
     <ClCompile Include="src\Infrastructure\LLM\GeminiProvider.cpp" />
     <ClCompile Include="src\Infrastructure\LLM\HttpClient.cpp" />
@@ -114,12 +115,14 @@
     <ClCompile Include="src\Infrastructure\LLM\OpenAIProvider.cpp" />
     <ClCompile Include="src\Infrastructure\Parser\CSVParser.cpp" />
     <ClCompile Include="src\Infrastructure\Parser\ExcelParser.cpp" />
+    <ClCompile Include="src\Infrastructure\Parser\JsonParser.cpp" />
     <ClCompile Include="src\Infrastructure\Storage\SQLiteDB.cpp" />
     <ClCompile Include="src\Renderer\BarChart.cpp" />
     <ClCompile Include="src\Renderer\ChartRenderer.cpp" />
     <ClCompile Include="src\Renderer\LineChart.cpp" />
     <ClCompile Include="src\Renderer\PieChart.cpp" />
     <ClCompile Include="src\Renderer\ScatterChart.cpp" />
+    <ClCompile Include="src\Renderer\TableChart.cpp" />
     <ClCompile Include="src\View\ChartView.cpp" />
     <ClCompile Include="src\View\DashboardView.cpp" />
     <ClCompile Include="src\View\DataSummaryView.cpp" />
@@ -145,6 +148,7 @@
     <ClInclude Include="src\Domain\Orchestrator\AnalysisFlow.h" />
     <ClInclude Include="src\Domain\Orchestrator\AnalysisOrchestrator.h" />
     <ClInclude Include="src\Infrastructure\Cache\AnalysisCache.h" />
+    <ClInclude Include="src\Infrastructure\CrashRecovery\CrashRecoveryManager.h" />
     <ClInclude Include="src\Infrastructure\LLM\ClaudeProvider.h" />
     <ClInclude Include="src\Infrastructure\LLM\GeminiProvider.h" />
     <ClInclude Include="src\Infrastructure\LLM\HttpClient.h" />
@@ -153,12 +157,14 @@
     <ClInclude Include="src\Infrastructure\LLM\OpenAIProvider.h" />
     <ClInclude Include="src\Infrastructure\Parser\CSVParser.h" />
     <ClInclude Include="src\Infrastructure\Parser\ExcelParser.h" />
+    <ClInclude Include="src\Infrastructure\Parser\JsonParser.h" />
     <ClInclude Include="src\Infrastructure\Storage\SQLiteDB.h" />
     <ClInclude Include="src\Renderer\BarChart.h" />
     <ClInclude Include="src\Renderer\ChartRenderer.h" />
     <ClInclude Include="src\Renderer\LineChart.h" />
     <ClInclude Include="src\Renderer\PieChart.h" />
     <ClInclude Include="src\Renderer\ScatterChart.h" />
+    <ClInclude Include="src\Renderer\TableChart.h" />
     <ClInclude Include="src\Resources\resource.h" />
     <ClInclude Include="src\View\ChartView.h" />
     <ClInclude Include="src\View\DashboardView.h" />

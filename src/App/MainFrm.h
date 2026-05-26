@@ -40,6 +40,7 @@ protected:
     afx_msg LRESULT OnDataLoaded(WPARAM wParam, LPARAM lParam);         // WM_DATA_LOADED
     afx_msg LRESULT OnLlmResponse(WPARAM wParam, LPARAM lParam);        // WM_LLM_RESPONSE
     afx_msg LRESULT OnExportComplete(WPARAM wParam, LPARAM lParam);     // WM_EXPORT_COMPLETE
+    afx_msg void OnDropFiles(HDROP hDropInfo);
 
     DECLARE_MESSAGE_MAP()
 };

@@ -4,6 +4,7 @@
 // Infrastructure 레이어 — .cpp에서만 include
 #include "../../Infrastructure/Parser/CSVParser.h"
 #include "../../Infrastructure/Parser/ExcelParser.h"
+#include "../../Infrastructure/Parser/JsonParser.h"
 
 // ============================================================
 // DataSourceService 구현
@@ -38,13 +39,8 @@ BOOL DataSourceService::LoadFile(const CString& filePath,
         return outError.code.IsEmpty();
     }
     else if (ext == _T("json")) {
-        // JSON은 MVP 범위 외 — 추후 JsonParser 추가
-        outError = AppError(
-            _T("UNSUPPORTED_FILE_TYPE"),
-            _T("JSON 파일 파싱은 현재 지원되지 않습니다."),
-            1 // warning
-        );
-        return FALSE;
+        outData = JsonParser::Parse(filePath, outError);
+        return outError.code.IsEmpty();
     }
     else {
         outError = AppError(

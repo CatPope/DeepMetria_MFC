@@ -14,6 +14,8 @@ BEGIN_MESSAGE_MAP(CDashboardView, CScrollView)
     ON_WM_LBUTTONDOWN()
     ON_WM_MOUSEMOVE()
     ON_WM_LBUTTONUP()
+    ON_WM_RBUTTONUP()
+    ON_WM_CONTEXTMENU()
     ON_MESSAGE(WM_VISUALIZATION_READY, &CDashboardView::OnVisualizationReady)
 END_MESSAGE_MAP()
 
@@ -21,8 +23,11 @@ END_MESSAGE_MAP()
 // 생성 / 소멸
 // ============================================================
 CDashboardView::CDashboardView()
-    : CScrollView()
-    , m_nHoverCard(-1)
+    : CScrollView(), m_nHoverCard(-1)
+    , m_bDragging(FALSE), m_nDragCard(-1)
+    , m_ptDragStart(0, 0), m_ptDragOffset(0, 0)
+    , m_bResizing(FALSE), m_nResizeCard(-1), m_nResizeEdge(0)
+    , m_ptResizeStart(0, 0)
 {
 }
 
@@ -274,7 +279,45 @@ void CDashboardView::OnLButtonDown(UINT nFlags, CPoint point)
 {
     int idx = HitTestCard(point);
     if (idx >= 0)
+    {
         m_selectedVizId = m_visualizations[idx].id;
+
+        // 리사이즈 에지 감지 (카드 우하단 8px)
+        CRect cardRect = GetCardRect(idx);
+        CRect resizeGrip(cardRect.right - 8, cardRect.bottom - 8,
+                          cardRect.right, cardRect.bottom);
+        CRect rightEdge(cardRect.right - 6, cardRect.top + 20,
+                         cardRect.right, cardRect.bottom - 8);
+        CRect bottomEdge(cardRect.left + 20, cardRect.bottom - 6,
+                          cardRect.right - 8, cardRect.bottom);
+
+        if (resizeGrip.PtInRect(point)) {
+            m_bResizing = TRUE;
+            m_nResizeCard = idx;
+            m_nResizeEdge = 3; // corner
+            m_ptResizeStart = point;
+            SetCapture();
+        } else if (rightEdge.PtInRect(point)) {
+            m_bResizing = TRUE;
+            m_nResizeCard = idx;
+            m_nResizeEdge = 1;
+            m_ptResizeStart = point;
+            SetCapture();
+        } else if (bottomEdge.PtInRect(point)) {
+            m_bResizing = TRUE;
+            m_nResizeCard = idx;
+            m_nResizeEdge = 2;
+            m_ptResizeStart = point;
+            SetCapture();
+        } else {
+            // 드래그 시작
+            m_bDragging = TRUE;
+            m_nDragCard = idx;
+            m_ptDragStart = point;
+            m_ptDragOffset = CPoint(point.x - cardRect.left, point.y - cardRect.top);
+            SetCapture();
+        }
+    }
     else
         m_selectedVizId.Empty();
     Invalidate();
@@ -296,13 +339,45 @@ void CDashboardView::OnLButtonDblClk(UINT nFlags, CPoint point)
 
 void CDashboardView::OnMouseMove(UINT nFlags, CPoint point)
 {
+    if (m_bDragging && m_nDragCard >= 0)
+    {
+        // 드래그 중 — 카드 위치 업데이트
+        CRect clientRect;
+        GetClientRect(&clientRect);
+        int cardW = (clientRect.Width() - CARD_MARGIN * (CARD_COLS + 1)) / CARD_COLS;
+
+        int newCol = (point.x - m_ptDragOffset.x + cardW / 2) / (cardW + CARD_MARGIN);
+        int newRow = (point.y - m_ptDragOffset.y + CARD_H / 2 + GetScrollPos(SB_VERT)) / (CARD_H + CARD_MARGIN);
+        newCol = max(0, min(newCol, CARD_COLS - 1));
+        newRow = max(0, newRow);
+
+        int newIdx = newRow * CARD_COLS + newCol;
+        if (newIdx != m_nDragCard && newIdx >= 0 && newIdx < (int)m_visualizations.size())
+        {
+            // 카드 위치 교환
+            std::swap(m_visualizations[m_nDragCard], m_visualizations[newIdx]);
+            m_nDragCard = newIdx;
+            Invalidate();
+        }
+        CScrollView::OnMouseMove(nFlags, point);
+        return;
+    }
+
+    if (m_bResizing && m_nResizeCard >= 0)
+    {
+        // 리사이즈 — 그리드 단위로 반영은 OnLButtonUp에서
+        Invalidate();
+        CScrollView::OnMouseMove(nFlags, point);
+        return;
+    }
+
+    // 기존 툴팁 로직 유지
     int idx = HitTestCard(point);
     if (idx != m_nHoverCard)
     {
         m_nHoverCard = idx;
         if (idx >= 0 && idx < (int)m_visualizations.size())
         {
-            // 카드 제목 전체를 툴팁으로 표시
             m_toolTip.UpdateTipText(m_visualizations[idx].title, this);
             m_toolTip.Activate(TRUE);
         }
@@ -316,6 +391,30 @@ void CDashboardView::OnMouseMove(UINT nFlags, CPoint point)
 
 void CDashboardView::OnLButtonUp(UINT nFlags, CPoint point)
 {
+    if (m_bDragging)
+    {
+        m_bDragging = FALSE;
+        m_nDragCard = -1;
+        ReleaseCapture();
+
+        // LayoutItem 위치 업데이트
+        for (int i = 0; i < (int)m_visualizations.size(); ++i)
+        {
+            m_visualizations[i].position.x = i % CARD_COLS;
+            m_visualizations[i].position.y = i / CARD_COLS;
+        }
+        Invalidate();
+    }
+
+    if (m_bResizing)
+    {
+        m_bResizing = FALSE;
+        m_nResizeCard = -1;
+        m_nResizeEdge = 0;
+        ReleaseCapture();
+        Invalidate();
+    }
+
     CScrollView::OnLButtonUp(nFlags, point);
 }
 
@@ -324,6 +423,45 @@ BOOL CDashboardView::PreTranslateMessage(MSG* pMsg)
     if (m_toolTip.GetSafeHwnd())
         m_toolTip.RelayEvent(pMsg);
     return CScrollView::PreTranslateMessage(pMsg);
+}
+
+void CDashboardView::OnRButtonUp(UINT nFlags, CPoint point)
+{
+    CScrollView::OnRButtonUp(nFlags, point);
+}
+
+void CDashboardView::OnContextMenu(CWnd* pWnd, CPoint point)
+{
+    CPoint clientPt = point;
+    ScreenToClient(&clientPt);
+    int idx = HitTestCard(clientPt);
+    if (idx < 0) return;
+
+    CMenu menu;
+    menu.CreatePopupMenu();
+    menu.AppendMenu(MF_STRING, 1001, _T("색상 변경..."));
+    menu.AppendMenu(MF_STRING, 1002, _T("삭제"));
+
+    int cmd = (int)menu.TrackPopupMenu(
+        TPM_LEFTALIGN | TPM_RETURNCMD, point.x, point.y, this);
+
+    if (cmd == 1001)
+    {
+        CColorDialog dlg(RGB(65, 105, 225), CC_FULLOPEN, this);
+        if (dlg.DoModal() == IDOK)
+        {
+            COLORREF color = dlg.GetColor();
+            CString hexColor;
+            hexColor.Format(_T("#%02X%02X%02X"),
+                GetRValue(color), GetGValue(color), GetBValue(color));
+            m_visualizations[idx].style.primaryColor = hexColor;
+            Invalidate();
+        }
+    }
+    else if (cmd == 1002)
+    {
+        RemoveVisualization(m_visualizations[idx].id);
+    }
 }
 
 // WM_VISUALIZATION_READY: AnalysisFlow에서 시각화 카드 생성

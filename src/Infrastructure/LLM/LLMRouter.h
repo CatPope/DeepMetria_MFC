@@ -49,6 +49,15 @@ public:
               CString&       outResponse,
               AppError&      outError);
 
+    // ── 재시도 포함 동기 호출 ────────────
+    // maxRetries : 최대 재시도 횟수 (기본값 3)
+    // 지수 백오프: Sleep(1000 * 2^(attempt-1)) ms
+    BOOL ChatWithRetry(const CString& systemPrompt,
+                       const CString& userMessage,
+                       CString&       outResponse,
+                       AppError&      outError,
+                       int            maxRetries = 3);
+
     // 전체 메시지 이력을 받는 오버로드
     BOOL ChatWithHistory(const std::vector<ChatMessage>& messages,
                          CString&                        outResponse,

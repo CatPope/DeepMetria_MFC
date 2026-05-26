@@ -28,6 +28,7 @@ static UINT indicators[] =
 // ============================================================
 BEGIN_MESSAGE_MAP(CMainFrame, CFrameWnd)
     ON_WM_CREATE()
+    ON_WM_DROPFILES()
     // 커스텀 메시지 핸들러
     ON_MESSAGE(WM_ANALYSIS_PROGRESS,   &CMainFrame::OnAnalysisProgress)
     ON_MESSAGE(WM_ANALYSIS_DONE,       &CMainFrame::OnAnalysisDone)
@@ -67,7 +68,30 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
     if (CFrameWnd::OnCreate(lpCreateStruct) == -1)
         return -1;
 
-    // TODO: 툴바 비트맵 리소스 추가 후 활성화
+    // ---- 툴바 생성 ----
+    if (!m_wndToolBar.CreateEx(this, TBSTYLE_FLAT,
+            WS_CHILD | WS_VISIBLE | CBRS_TOP | CBRS_GRIPPER | CBRS_TOOLTIPS) ||
+        !m_wndToolBar.LoadToolBar(IDR_MAINFRAME))
+    {
+        // 툴바 리소스가 없으면 기본 버튼으로 생성
+        if (m_wndToolBar.GetSafeHwnd() == nullptr)
+        {
+            m_wndToolBar.Create(this, WS_CHILD | WS_VISIBLE | CBRS_TOP | CBRS_TOOLTIPS);
+        }
+
+        // 프로그래밍 방식으로 기본 버튼 추가
+        m_wndToolBar.SetButtons(nullptr, 3);
+        m_wndToolBar.SetButtonInfo(0, ID_FILE_OPEN_DATA, TBBS_BUTTON, 0);
+        m_wndToolBar.SetButtonInfo(1, ID_SEPARATOR,    TBBS_SEPARATOR, 6);
+        m_wndToolBar.SetButtonInfo(2, ID_APP_ABOUT,    TBBS_BUTTON, 1);
+
+        // 버튼 텍스트 표시 (아이콘 리소스가 없는 경우)
+        m_wndToolBar.SetButtonText(0, _T("열기"));
+        m_wndToolBar.SetButtonText(2, _T("정보"));
+
+        // 텍스트 표시를 위해 크기 조정
+        m_wndToolBar.SetSizes(CSize(50, 36), CSize(16, 15));
+    }
 
     // ---- 상태바 생성 ----
     if (!m_wndStatusBar.Create(this) ||
@@ -79,6 +103,8 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
     // 초기 상태 텍스트
     m_wndStatusBar.SetPaneText(0, _T("준비"));
+
+    DragAcceptFiles(TRUE);
 
     return 0;
 }
@@ -241,4 +267,47 @@ LRESULT CMainFrame::OnExportComplete(WPARAM wParam, LPARAM lParam)
     else
         SetStatusText(_T("내보내기 실패"));
     return 0;
+}
+
+// WM_DROPFILES: 드래그앤드롭 파일 열기
+void CMainFrame::OnDropFiles(HDROP hDropInfo)
+{
+    UINT fileCount = DragQueryFile(hDropInfo, 0xFFFFFFFF, nullptr, 0);
+    if (fileCount == 0)
+    {
+        DragFinish(hDropInfo);
+        return;
+    }
+
+    // 첫 번째 파일만 처리
+    TCHAR filePath[MAX_PATH] = {};
+    DragQueryFile(hDropInfo, 0, filePath, MAX_PATH);
+    DragFinish(hDropInfo);
+
+    // 확장자 확인
+    CString path(filePath);
+    int dotPos = path.ReverseFind(_T('.'));
+    if (dotPos < 0)
+    {
+        AfxMessageBox(_T("지원하지 않는 파일 형식입니다.\nCSV, Excel, JSON 파일만 드래그할 수 있습니다."),
+                      MB_ICONWARNING);
+        return;
+    }
+    CString ext = path.Mid(dotPos + 1);
+    ext.MakeLower();
+
+    if (ext != _T("csv") && ext != _T("xlsx") && ext != _T("xls") && ext != _T("json"))
+    {
+        AfxMessageBox(_T("지원하지 않는 파일 형식입니다.\nCSV, Excel, JSON 파일만 드래그할 수 있습니다."),
+                      MB_ICONWARNING);
+        return;
+    }
+
+    // Document에 파일 로드 요청
+    CDocument* pDoc = GetActiveDocument();
+    if (pDoc)
+    {
+        pDoc->OnOpenDocument(filePath);
+        SetStatusText(_T("파일 드래그 로드 완료"));
+    }
 }

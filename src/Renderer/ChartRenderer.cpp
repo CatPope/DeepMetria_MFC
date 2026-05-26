@@ -8,6 +8,7 @@
 #include "LineChart.h"
 #include "PieChart.h"
 #include "ScatterChart.h"
+#include "TableChart.h"
 #include <gdiplus.h>
 
 using namespace Gdiplus;
@@ -75,6 +76,8 @@ void CChartRenderer::Render(CDC* pDC, const CRect& rect, const ChartConfig& conf
         CPieChart::Draw(g, plotArea, config);
     else if (type == _T("scatter"))
         CScatterChart::Draw(g, plotArea, config);
+    else if (type == _T("table"))
+        CTableChart::Draw(g, plotArea, config);
     else
     {
         // 알 수 없는 차트 타입 — 오류 텍스트 표시
@@ -132,6 +135,8 @@ void CChartRenderer::RenderToFile(const CString& filePath, int width, int height
         CPieChart::Draw(g, plotArea, config);
     else if (type == _T("scatter"))
         CScatterChart::Draw(g, plotArea, config);
+    else if (type == _T("table"))
+        CTableChart::Draw(g, plotArea, config);
 
     // 파일 확장자로 포맷 결정
     CString ext = filePath.Right(4);

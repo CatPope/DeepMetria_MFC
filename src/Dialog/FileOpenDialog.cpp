@@ -5,9 +5,10 @@
 // 상수 정의
 // ============================================================
 const TCHAR CFileOpenDialog::FILE_FILTER[] =
-    _T("데이터 파일 (*.csv;*.xlsx)|*.csv;*.xlsx|")
+    _T("데이터 파일 (*.csv;*.xlsx;*.json)|*.csv;*.xlsx;*.json|")
     _T("CSV 파일 (*.csv)|*.csv|")
     _T("Excel 파일 (*.xlsx)|*.xlsx|")
+    _T("JSON 파일 (*.json)|*.json|")
     _T("모든 파일 (*.*)|*.*||");
 
 const TCHAR CFileOpenDialog::MRU_REG_KEY[] =

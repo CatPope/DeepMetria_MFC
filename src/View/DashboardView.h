@@ -51,13 +51,26 @@ protected:
     virtual void OnUpdate(CView* pSender, LPARAM lHint, CObject* pHint) override;
     virtual BOOL PreTranslateMessage(MSG* pMsg) override;
 
+    // 드래그 상태
+    BOOL    m_bDragging;
+    int     m_nDragCard;      // 드래그 중인 카드 인덱스
+    CPoint  m_ptDragStart;    // 드래그 시작 점
+    CPoint  m_ptDragOffset;   // 카드 내 오프셋
+
+    // 리사이즈 상태
+    BOOL    m_bResizing;
+    int     m_nResizeCard;
+    CPoint  m_ptResizeStart;
+    int     m_nResizeEdge;    // 0=none, 1=right, 2=bottom, 3=corner
+
     // 메시지 핸들러
     afx_msg void OnSize(UINT nType, int cx, int cy);
     afx_msg void OnLButtonDblClk(UINT nFlags, CPoint point);
     afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
-    // post-MVP: 드래그 앤 드롭 카드 순서 변경 (빈 핸들러)
     afx_msg void OnMouseMove(UINT nFlags, CPoint point);
     afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
+    afx_msg void OnRButtonUp(UINT nFlags, CPoint point);
+    afx_msg void OnContextMenu(CWnd* pWnd, CPoint point);
 
     // 커스텀 메시지 핸들러
     afx_msg LRESULT OnVisualizationReady(WPARAM wParam, LPARAM lParam);

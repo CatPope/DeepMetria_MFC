@@ -63,6 +63,32 @@ BOOL LLMRouter::Chat(const CString& systemPrompt,
     return prov->Chat(systemPrompt, userMessage, m_model, outResponse, outError);
 }
 
+BOOL LLMRouter::ChatWithRetry(const CString& systemPrompt,
+                               const CString& userMessage,
+                               CString&       outResponse,
+                               AppError&      outError,
+                               int            maxRetries) {
+    for (int attempt = 0; attempt <= maxRetries; ++attempt) {
+        outError.Clear();
+        outResponse.Empty();
+
+        BOOL result = Chat(systemPrompt, userMessage, outResponse, outError);
+        if (result)
+            return TRUE;
+
+        // 마지막 시도였으면 더 이상 재시도하지 않음
+        if (attempt >= maxRetries)
+            break;
+
+        // 지수 백오프 대기 (단위 테스트에서는 DEEPMETRIA_UNIT_TEST 매크로로 스킵 가능)
+#ifndef DEEPMETRIA_UNIT_TEST
+        DWORD waitMs = 1000 * (1 << attempt); // 1s, 2s, 4s, ...
+        Sleep(waitMs);
+#endif
+    }
+    return FALSE;
+}
+
 BOOL LLMRouter::ChatWithHistory(const std::vector<ChatMessage>& messages,
                                  CString&                        outResponse,
                                  AppError&                       outError) {

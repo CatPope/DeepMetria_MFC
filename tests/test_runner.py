@@ -5,7 +5,8 @@ DeepMetria MFC 자동화 테스트 러너
   python tests/test_runner.py                    # 전체 테스트 실행
   python tests/test_runner.py --connect          # 이미 실행 중인 앱에 연결
   python tests/test_runner.py --suite layout     # 특정 스위트만 실행
-                                                 # 스위트: layout, file_load, query_input, data_summary
+                                                 # 스위트: layout, file_load, query_input, data_summary,
+                                                 #         json_load, export, dashboard
 
 환경변수:
   DEEPMETRIA_EXE  — 앱 실행 파일 경로 (기본값: x64\\Release\\DeepMetria.exe)
@@ -26,6 +27,9 @@ import test_layout
 import test_file_load
 import test_query_input
 import test_data_summary
+import test_json_load
+import test_export
+import test_dashboard
 
 
 # ---------------------------------------------------------------------------
@@ -105,13 +109,16 @@ def save_results(all_results: dict, elapsed: float):
 # 스위트 실행
 # ---------------------------------------------------------------------------
 
-SUITE_ORDER = ["layout", "file_load", "query_input", "data_summary"]
+SUITE_ORDER = ["layout", "file_load", "query_input", "data_summary", "json_load", "export", "dashboard"]
 
 SUITE_DESCRIPTIONS = {
     "layout":       "레이아웃 테스트 (L-01~L-09)",
     "file_load":    "파일 로드 테스트 (F-01~F-09)",
     "query_input":  "QueryInputView 테스트 (Q-01~Q-16)",
     "data_summary": "DataSummaryView 테스트 (D-01~D-14)",
+    "json_load":    "JSON 파일 로드 테스트 (J-01~J-04)",
+    "export":       "내보내기 테스트 (E-01~E-04)",
+    "dashboard":    "대시보드 인터랙션 테스트 (DI-01~DI-06)",
 }
 
 
@@ -143,11 +150,35 @@ def run_data_summary(app, win) -> dict:
     return test_data_summary.run_suite(app, win)
 
 
+def run_json_load(app, win) -> dict:
+    print(f"\n{'─'*48}")
+    print(f"  {SUITE_DESCRIPTIONS['json_load']}")
+    print(f"{'─'*48}")
+    return test_json_load.run_suite(app, win)
+
+
+def run_export(app, win) -> dict:
+    print(f"\n{'─'*48}")
+    print(f"  {SUITE_DESCRIPTIONS['export']}")
+    print(f"{'─'*48}")
+    return test_export.run_suite(app, win)
+
+
+def run_dashboard(app, win) -> dict:
+    print(f"\n{'─'*48}")
+    print(f"  {SUITE_DESCRIPTIONS['dashboard']}")
+    print(f"{'─'*48}")
+    return test_dashboard.run_suite(app, win)
+
+
 SUITE_RUNNERS = {
     "layout":       run_layout,
     "file_load":    run_file_load,
     "query_input":  run_query_input,
     "data_summary": run_data_summary,
+    "json_load":    run_json_load,
+    "export":       run_export,
+    "dashboard":    run_dashboard,
 }
 
 
