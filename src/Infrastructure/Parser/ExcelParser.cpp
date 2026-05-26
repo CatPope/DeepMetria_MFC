@@ -116,9 +116,11 @@ DataTable ExcelParser::Parse(const CString& filePath, AppError& outError) {
 
 BOOL ExcelParser::ValidateXlsx(const CString& filePath, AppError& outError) {
     // 확장자 확인
-    CString ext = filePath.Right(5).MakeLower();
-    if (ext != _T(".xlsx") && !filePath.Right(4).MakeLower().Compare(_T(".xls")) == 0) {
-        // .xlsx 또는 .xls 허용
+    CString ext5 = filePath.Right(5).MakeLower();
+    CString ext4 = filePath.Right(4).MakeLower();
+    if (ext5 != _T(".xlsx") && ext4 != _T(".xls")) {
+        outError.Set(_T("INVALID_EXT"), _T("xlsx 또는 xls 파일만 지원합니다."));
+        return FALSE;
     }
 
     // 파일 존재 확인

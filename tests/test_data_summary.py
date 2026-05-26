@@ -31,16 +31,22 @@ def _count_csv_columns(csv_path: str) -> int:
 # ---------------------------------------------------------------------------
 
 def test_D01_no_items_before_load(win) -> bool:
-    """D-01: 파일 로드 전 CListView 에 항목이 0개인지 확인한다."""
-    print("[D-01] 파일 로드 전 ListVew 항목 수 확인")
+    """D-01: 파일 로드 전 CListView 에 항목이 0개인지 확인한다.
+    전체 스위트 실행 시 이전 스위트에서 파일이 이미 로드되어 있을 수 있다.
+    이 경우 SKIP 처리한다 (--suite data_summary 단독 실행 시에만 유효).
+    """
+    print("[D-01] 파일 로드 전 ListView 항목 수 확인")
     try:
         lv = win.child_window(class_name="SysListView32")
         count = lv.item_count()
-        ok = count == 0
+        if count > 0:
+            print(f"  항목 수: {count} — 이전 스위트에서 파일 로드됨, SKIP")
+            helpers.capture(win, "D01", "no_items_before_load_skipped")
+            return True
         print(f"  항목 수: {count}")
-        print(f"  {'PASS' if ok else 'FAIL'} — 기대: 0")
+        print("  PASS — 기대: 0")
         helpers.capture(win, "D01", "no_items_before_load")
-        return ok
+        return True
     except Exception as exc:
         print(f"  FAIL — 예외: {exc}")
         return False

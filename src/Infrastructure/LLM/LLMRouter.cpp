@@ -4,7 +4,6 @@
 #include "OpenAIProvider.h"
 #include "GeminiProvider.h"
 #include <wincrypt.h>
-#include <afxmt.h>
 
 #pragma comment(lib, "crypt32.lib")
 
@@ -80,6 +79,7 @@ BOOL LLMRouter::ChatWithHistory(const std::vector<ChatMessage>& messages,
 // 비동기 Chat — AfxBeginThread 사용
 // ============================================================
 
+#ifndef DEEPMETRIA_UNIT_TEST
 void LLMRouter::ChatAsync(const CString& systemPrompt,
                            const CString& userMessage,
                            HWND           hWnd,
@@ -93,7 +93,9 @@ void LLMRouter::ChatAsync(const CString& systemPrompt,
 
     AfxBeginThread(AsyncThreadProc, pParam, THREAD_PRIORITY_NORMAL, 0, 0, nullptr);
 }
+#endif
 
+#ifndef DEEPMETRIA_UNIT_TEST
 UINT LLMRouter::AsyncThreadProc(LPVOID pParam) {
     AsyncParam* p = static_cast<AsyncParam*>(pParam);
 
@@ -102,7 +104,6 @@ UINT LLMRouter::AsyncThreadProc(LPVOID pParam) {
 
     p->pRouter->Chat(p->systemPrompt, p->userMessage, pResult->response, pResult->error);
 
-    // 완료 메시지 전송 (수신 측에서 pResult delete)
     if (IsWindow(p->hWnd)) {
         ::PostMessage(p->hWnd, WM_LLM_RESPONSE, (WPARAM)p->pContext, (LPARAM)pResult);
     } else {
@@ -112,6 +113,7 @@ UINT LLMRouter::AsyncThreadProc(LPVOID pParam) {
     delete p;
     return 0;
 }
+#endif
 
 // ============================================================
 // 레지스트리 API 키 저장/로드 (DPAPI 암호화)
@@ -143,6 +145,7 @@ BOOL LLMRouter::LoadApiKeysFromRegistry(AppError& outError) {
 
     loadKey(_T("ClaudeApiKey"), Provider::Claude);
     loadKey(_T("OpenAIApiKey"), Provider::OpenAI);
+    loadKey(_T("GeminiApiKey"), Provider::Gemini);
 
     RegCloseKey(hKey);
     return TRUE;
@@ -167,7 +170,9 @@ BOOL LLMRouter::SaveApiKeyToRegistry(Provider       provider,
         return FALSE;
     }
 
-    const TCHAR* valueName = (provider == Provider::Claude) ? _T("ClaudeApiKey") : _T("OpenAIApiKey");
+    const TCHAR* valueName = (provider == Provider::Claude)  ? _T("ClaudeApiKey")
+                           : (provider == Provider::OpenAI) ? _T("OpenAIApiKey")
+                           :                                  _T("GeminiApiKey");
     DWORD size = (cipher.GetLength() + 1) * sizeof(TCHAR);
     RegSetValueEx(hKey, valueName, 0, REG_SZ, (const BYTE*)cipher.GetString(), size);
     RegCloseKey(hKey);

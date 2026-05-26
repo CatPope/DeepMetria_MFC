@@ -70,8 +70,9 @@ def capture(win, test_id: str, description: str) -> str:
     temp_path = os.path.join(CLAUDE_TEMP_DIR, filename)
 
     try:
-        win.capture_as_image().save(main_path)
-        win.capture_as_image().save(temp_path)
+        img = win.capture_as_image()
+        img.save(main_path)
+        img.save(temp_path)
         print(f"  [SCREENSHOT] {main_path}")
     except Exception as exc:
         print(f"  [SCREENSHOT ERROR] {exc}")
@@ -89,8 +90,9 @@ def capture_control(control, test_id: str, description: str) -> str:
     temp_path = os.path.join(CLAUDE_TEMP_DIR, filename)
 
     try:
-        control.capture_as_image().save(main_path)
-        control.capture_as_image().save(temp_path)
+        img = control.capture_as_image()
+        img.save(main_path)
+        img.save(temp_path)
         print(f"  [SCREENSHOT] {main_path}")
     except Exception as exc:
         print(f"  [SCREENSHOT ERROR] {exc}")
@@ -209,7 +211,7 @@ def get_listview_columns(win) -> list:
     """SysListView32 의 컬럼 헤더 텍스트 목록을 반환한다."""
     try:
         lv = win.child_window(class_name="SysListView32")
-        return lv.get_column_texts()
+        return [col['text'] for col in lv.columns()]
     except Exception as exc:
         print(f"  [WARN] get_listview_columns: {exc}")
         return []

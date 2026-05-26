@@ -10,7 +10,14 @@
       "Agent(*)",
       "WebFetch(*)",
       "WebSearch(*)",
-      "mcp__*"
+      "mcp__*",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "mcp__plugin_oh-my-claudecode_t__state_write"
+    ],
+    "deny": [
+      "Edit(tests/**)",
+      "Write(tests/**)"
     ]
   }
 }

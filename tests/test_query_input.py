@@ -20,7 +20,6 @@ def _dismiss_msgbox(app, expected_text: str = "") -> str:
     #32770 클래스의 대화상자(MessageBox)를 찾아 텍스트를 읽고 Enter 로 닫는다.
     찾은 텍스트를 반환한다. 대화상자가 없으면 빈 문자열을 반환한다.
     """
-    import pywinauto
     try:
         dlg = app.window(class_name="#32770")
         dlg.wait("visible", timeout=3)
@@ -195,7 +194,7 @@ def run_suite(app, win) -> dict:
     results["Q-06"] = test_Q06_no_file_msgbox(app, win)
     results["Q-07"] = test_Q07_file_load_status(app, win)
     results["Q-08"] = test_Q08_korean_input(win)
-    results["Q-09~Q-16"] = test_Q09_to_Q16_manual(win)
+    results["Q-09~Q-16_MANUAL"] = test_Q09_to_Q16_manual(win)
     return results
 
 
