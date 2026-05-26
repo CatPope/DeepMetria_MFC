@@ -45,7 +45,11 @@ def connect_app():
 
 def get_main_window(app):
     """타이틀에 'DeepMetria' 가 포함된 메인 윈도우를 반환한다."""
-    return app.window(title_re=".*DeepMetria.*")
+    try:
+        return app.window(title_re=".*DeepMetria.*",
+                          class_name_re="Afx.*")
+    except Exception:
+        return app.window(title_re=".*DeepMetria.*")
 
 
 # ---------------------------------------------------------------------------

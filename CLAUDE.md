@@ -3,6 +3,7 @@
 ## 목차
 1. 프로젝트 설정 .. L18
 2. 테스트 파일 수정 규칙 .. L30
+3. 개발 파이프라인 .. L41
 
 
 
@@ -36,3 +37,25 @@
 | 수정 시 | 반드시 사용자 허가를 받은 후 수정 |
 | 신규 생성 | 사용자 허가 필요 |
 | 삭제 | 사용자 허가 필요 |
+
+## 3. 개발 파이프라인
+
+코드 작업 시 반드시 다음 루프를 따른다:
+
+```
+1. 코드 작성/수정
+2. 빌드 (build.bat 또는 rebuild.bat)
+3. UI 테스트 (python pipeline.py --test-only)
+4. 결과 분석 (pipeline_result.json 확인)
+   → FAIL: 1번으로 돌아가 수정
+   → PASS: 루프 종료, 사용자에게 결과 보고
+```
+
+| 명령 | 용도 |
+|------|------|
+| `python pipeline.py` | 전체 (빌드+테스트+분석) |
+| `python pipeline.py --build-only` | 빌드만 |
+| `python pipeline.py --test-only` | 테스트+분석만 |
+| `python pipeline.py --config Release` | Release 빌드 |
+
+빌드 실행 방법: `powershell.exe -Command "& cmd /c '<프로젝트루트>\build.bat'"` (Bash 셸에서)

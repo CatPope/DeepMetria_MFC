@@ -20,10 +20,16 @@ def _dismiss_any_dialog(app) -> str:
         dlg = app.window(class_name="#32770")
         dlg.wait("visible", timeout=3)
         text = ""
-        try:
-            static = dlg.child_window(class_name="Static", found_index=0)
-            text = static.window_text()
-        except Exception:
+        for idx in range(5):
+            try:
+                static = dlg.child_window(class_name="Static", found_index=idx)
+                t = static.window_text()
+                if t:
+                    text = t
+                    break
+            except Exception:
+                break
+        if not text:
             text = dlg.window_text()
         dlg.type_keys("{ENTER}")
         return text

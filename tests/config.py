@@ -5,7 +5,7 @@ DeepMetria MFC 자동화 테스트 설정
 import os
 
 # 앱 실행 파일 경로 — 환경변수 또는 기본값
-APP_EXE = os.environ.get("DEEPMETRIA_EXE", r"x64\Release\DeepMetria.exe")
+APP_EXE = os.environ.get("DEEPMETRIA_EXE", r"x64\Debug\DeepMetria.exe")
 
 # 프로젝트 루트 (tests/ 의 상위)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -201,6 +201,17 @@ def main():
     start_time = time.time()
 
     for suite_name in suites_to_run:
+        # query_input은 초기 상태가 필요하므로 앱 재시작
+        if suite_name == "query_input" and not args.connect and not args.suite:
+            try:
+                app.kill()
+                time.sleep(1)
+                app = helpers.start_app()
+                win = helpers.get_main_window(app)
+                win.wait("ready", timeout=10)
+            except Exception as exc:
+                print(f"\n  [앱 재시작 오류] {exc}")
+
         runner = SUITE_RUNNERS[suite_name]
         try:
             suite_results = runner(app, win)

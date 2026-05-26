@@ -24,12 +24,16 @@ def _dismiss_msgbox(app, expected_text: str = "") -> str:
         dlg = app.window(class_name="#32770")
         dlg.wait("visible", timeout=3)
         text = dlg.window_text()
-        # 대화상자 본문 텍스트도 수집
-        try:
-            static = dlg.child_window(class_name="Static", found_index=0)
-            text = static.window_text()
-        except Exception:
-            pass
+        # 대화상자 본문 텍스트도 수집 (Static[0]은 아이콘 자리로 빈 문자열)
+        for idx in range(5):
+            try:
+                static = dlg.child_window(class_name="Static", found_index=idx)
+                t = static.window_text()
+                if t:
+                    text = t
+                    break
+            except Exception:
+                break
         dlg.type_keys("{ENTER}")
         return text
     except Exception:
