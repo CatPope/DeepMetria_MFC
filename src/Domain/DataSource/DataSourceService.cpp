@@ -6,6 +6,9 @@
 #include "../../Infrastructure/Parser/ExcelParser.h"
 #include "../../Infrastructure/Parser/JsonParser.h"
 
+#include <set>
+#include <cfloat>
+
 // ============================================================
 // DataSourceService 구현
 // Architecture §4.1 / DetailedSpec §5 참조
@@ -150,24 +153,41 @@ std::vector<ColumnSchema> DataSourceService::GetSchema(const DataTable& data)
         cs.type  = col.type.IsEmpty() ? _T("text") : col.type;
         cs.index = i;
 
-        // null(빈 문자열) 개수 집계 및 샘플 값 수집
         int nullCount = 0;
         int sampleCount = 0;
         CString samples;
+        std::set<CString> uniqueVals;
+        double minNum = DBL_MAX, maxNum = -DBL_MAX;
+        CString minStr, maxStr;
+        bool hasValue = false;
 
         for (const CString& val : col.values) {
             if (val.IsEmpty()) {
                 ++nullCount;
-            } else if (sampleCount < 3) {
-                if (sampleCount > 0)
-                    samples += _T(",");
-                samples += val;
-                ++sampleCount;
+            } else {
+                uniqueVals.insert(val);
+                if (col.type == _T("numeric")) {
+                    double d = _tcstod(val, nullptr);
+                    if (d < minNum) { minNum = d; minStr = val; }
+                    if (d > maxNum) { maxNum = d; maxStr = val; }
+                    hasValue = true;
+                } else {
+                    if (!hasValue || val < minStr) minStr = val;
+                    if (!hasValue || val > maxStr) maxStr = val;
+                    hasValue = true;
+                }
+                if (sampleCount < 3) {
+                    if (sampleCount > 0) samples += _T(",");
+                    samples += val;
+                    ++sampleCount;
+                }
             }
         }
 
         cs.nullCount    = nullCount;
+        cs.uniqueCount  = (int)uniqueVals.size();
         cs.sampleValues = samples;
+        if (hasValue) { cs.minValue = minStr; cs.maxValue = maxStr; }
 
         schema.push_back(cs);
     }

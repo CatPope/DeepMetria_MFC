@@ -291,10 +291,11 @@ LRESULT CQueryInputView::OnAnalysisDone(WPARAM wParam, LPARAM lParam)
     {
         CString errMsg = _T("분석 중 오류가 발생했습니다.");
         if (!pFlow->lastError.message.IsEmpty())
-            errMsg += _T("\n") + pFlow->lastError.code + _T(": ") + pFlow->lastError.message;
+            errMsg += _T("\n") + pFlow->lastError.message;
 
-        TRACE(_T("[QueryInputView] 분석 오류: %s\n"), (LPCTSTR)pFlow->lastError.message);
-        UpdateStatusText(errMsg);
+        TRACE(_T("[QueryInputView] 분석 오류: %s - %s\n"),
+              (LPCTSTR)pFlow->lastError.code, (LPCTSTR)pFlow->lastError.message);
+        UpdateStatusText(_T("분석 중 오류가 발생했습니다."));
         AfxMessageBox(errMsg, MB_ICONERROR);
 
         delete pFlow;

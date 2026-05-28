@@ -7,6 +7,9 @@
 // Domain 레이어 (같은 레이어 내 직접 include)
 #include "../Analysis/AnalysisTools.h"
 
+#include <set>
+#include <cfloat>
+
 // ============================================================
 // DataSummarizer 구현
 // Architecture §4.1 / DetailedSpec §4.5 참조
@@ -87,13 +90,29 @@ BOOL DataSummarizer::DoSummarize(const DataTable& data,
         cs.name = col.name;
         cs.type = col.type;
 
-        // 결측치 수 계산
         cs.nullCount = 0;
-        for (const auto& v : col.values) {
-            if (v.IsEmpty()) cs.nullCount++;
-        }
+        std::set<CString> uniqueVals;
+        double minNum = DBL_MAX, maxNum = -DBL_MAX;
+        CString minStr, maxStr;
+        bool hasValue = false;
 
-        // 샘플값 최대 5개 (콤마 구분)
+        for (const auto& v : col.values) {
+            if (v.IsEmpty()) { cs.nullCount++; continue; }
+            uniqueVals.insert(v);
+            if (col.type == _T("numeric")) {
+                double d = _tcstod(v, nullptr);
+                if (d < minNum) { minNum = d; minStr = v; }
+                if (d > maxNum) { maxNum = d; maxStr = v; }
+                hasValue = true;
+            } else {
+                if (!hasValue || v < minStr) minStr = v;
+                if (!hasValue || v > maxStr) maxStr = v;
+                hasValue = true;
+            }
+        }
+        cs.uniqueCount = (int)uniqueVals.size();
+        if (hasValue) { cs.minValue = minStr; cs.maxValue = maxStr; }
+
         int sampleCount = min(5, (int)col.values.size());
         for (int i = 0; i < sampleCount; ++i) {
             if (i > 0) cs.sampleValues += _T(", ");

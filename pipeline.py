@@ -16,6 +16,7 @@ import json
 import datetime
 import argparse
 import re
+import ctypes
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -85,6 +86,13 @@ def run_tests(config: str = "Debug", suite: str = None) -> dict:
     print(f"  EXE: {exe_path}")
     print(f"  스위트: {suite or '전체'}")
     print()
+
+    # SetForegroundWindow 제한 해제 (UI 자동화에 필수)
+    focus_fix_dir = os.path.join(PROJECT_ROOT, ".claude", "temp")
+    site_customize = os.path.join(focus_fix_dir, "sitecustomize.py")
+    if os.path.isfile(site_customize):
+        existing = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = focus_fix_dir + (os.pathsep + existing if existing else "")
 
     result = subprocess.run(
         cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",

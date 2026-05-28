@@ -6,6 +6,8 @@
 #include "../Infrastructure/Parser/CSVParser.h"
 #include "../Infrastructure/Parser/ExcelParser.h"
 #include "../Infrastructure/Parser/JsonParser.h"
+#include <set>
+#include <cfloat>
 
 // ============================================================
 // IMPLEMENT_DYNCREATE
@@ -119,20 +121,54 @@ BOOL CDeepMetriaDoc::LoadFile(const CString& filePath, AppError& outError)
                 dc.values.push_back(_T(""));
         }
 
-        // 타입 추론: 비어있지 않은 값 중 숫자가 아닌 것이 있으면 "text"
+        // 타입 추론: date → numeric → text 순서
         bool allNumeric = true;
+        bool allDate = true;
+        bool hasNonEmpty = false;
+
         for (const auto& v : dc.values)
         {
             if (v.IsEmpty()) continue;
-            TCHAR* endPtr = nullptr;
-            _tcstod(v, &endPtr);
-            if (endPtr == (LPCTSTR)v || *endPtr != _T('\0'))
+            hasNonEmpty = true;
+
+            // 날짜 패턴: YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD
+            if (allDate)
             {
-                allNumeric = false;
-                break;
+                bool isDate = false;
+                if (v.GetLength() >= 10)
+                {
+                    TCHAR sep = v[4];
+                    if ((sep == _T('-') || sep == _T('/') || sep == _T('.')) &&
+                        v[7] == sep &&
+                        _istdigit(v[0]) && _istdigit(v[1]) &&
+                        _istdigit(v[2]) && _istdigit(v[3]) &&
+                        _istdigit(v[5]) && _istdigit(v[6]) &&
+                        _istdigit(v[8]) && _istdigit(v[9]))
+                    {
+                        isDate = true;
+                    }
+                }
+                if (!isDate) allDate = false;
+            }
+
+            // 숫자 검사
+            if (allNumeric)
+            {
+                TCHAR* endPtr = nullptr;
+                _tcstod(v, &endPtr);
+                if (endPtr == (LPCTSTR)v || *endPtr != _T('\0'))
+                    allNumeric = false;
             }
         }
-        dc.type = allNumeric ? _T("numeric") : _T("text");
+
+        if (!hasNonEmpty)
+            dc.type = _T("text");
+        else if (allDate)
+            dc.type = _T("date");
+        else if (allNumeric)
+            dc.type = _T("numeric");
+        else
+            dc.type = _T("text");
 
         m_dataTable.columns.push_back(dc);
     }
@@ -151,10 +187,39 @@ BOOL CDeepMetriaDoc::LoadFile(const CString& filePath, AppError& outError)
         cs.type  = dc.type;
         cs.index = c;
 
-        // 결측치 계산
+        // 결측치 계산 + 고유값 수 + 최솟값/최댓값
         cs.nullCount = 0;
+        std::set<CString> uniqueVals;
+        double minNum = DBL_MAX, maxNum = -DBL_MAX;
+        CString minStr, maxStr;
+        bool hasValue = false;
+
         for (const auto& v : dc.values)
-            if (v.IsEmpty()) cs.nullCount++;
+        {
+            if (v.IsEmpty()) { cs.nullCount++; continue; }
+            uniqueVals.insert(v);
+
+            if (dc.type == _T("numeric"))
+            {
+                double d = _tcstod(v, nullptr);
+                if (d < minNum) { minNum = d; minStr = v; }
+                if (d > maxNum) { maxNum = d; maxStr = v; }
+                hasValue = true;
+            }
+            else if (dc.type == _T("date") || dc.type == _T("text"))
+            {
+                if (!hasValue || v < minStr) minStr = v;
+                if (!hasValue || v > maxStr) maxStr = v;
+                hasValue = true;
+            }
+        }
+
+        cs.uniqueCount = (int)uniqueVals.size();
+        if (hasValue)
+        {
+            cs.minValue = minStr;
+            cs.maxValue = maxStr;
+        }
 
         // 샘플값 (최대 5개)
         int sampleCount = (std::min)(5, (int)dc.values.size());
@@ -244,6 +309,9 @@ void CDeepMetriaDoc::Serialize(CArchive& ar)
             ar << cs.index;
             ar << cs.nullCount;
             ar << cs.sampleValues;
+            ar << cs.uniqueCount;
+            ar << cs.minValue;
+            ar << cs.maxValue;
         }
 
         // Visualizations
@@ -301,6 +369,9 @@ void CDeepMetriaDoc::Serialize(CArchive& ar)
             ar >> m_dataSummary.schema[i].index;
             ar >> m_dataSummary.schema[i].nullCount;
             ar >> m_dataSummary.schema[i].sampleValues;
+            ar >> m_dataSummary.schema[i].uniqueCount;
+            ar >> m_dataSummary.schema[i].minValue;
+            ar >> m_dataSummary.schema[i].maxValue;
         }
 
         int vizCount = 0;
@@ -333,18 +404,41 @@ void CDeepMetriaDoc::Serialize(CArchive& ar)
                     dc.values.push_back(_T(""));
             }
             bool allNumeric = true;
+            bool allDate = true;
+            bool hasNonEmpty = false;
             for (const auto& v : dc.values)
             {
                 if (v.IsEmpty()) continue;
-                TCHAR* endPtr = nullptr;
-                _tcstod(v, &endPtr);
-                if (endPtr == (LPCTSTR)v || *endPtr != _T('\0'))
+                hasNonEmpty = true;
+                if (allDate)
                 {
-                    allNumeric = false;
-                    break;
+                    bool isDate = false;
+                    if (v.GetLength() >= 10)
+                    {
+                        TCHAR sep = v[4];
+                        if ((sep == _T('-') || sep == _T('/') || sep == _T('.')) &&
+                            v[7] == sep &&
+                            _istdigit(v[0]) && _istdigit(v[1]) &&
+                            _istdigit(v[2]) && _istdigit(v[3]) &&
+                            _istdigit(v[5]) && _istdigit(v[6]) &&
+                            _istdigit(v[8]) && _istdigit(v[9]))
+                            isDate = true;
+                    }
+                    if (!isDate) allDate = false;
+                }
+
+                if (allNumeric)
+                {
+                    TCHAR* endPtr = nullptr;
+                    _tcstod(v, &endPtr);
+                    if (endPtr == (LPCTSTR)v || *endPtr != _T('\0'))
+                        allNumeric = false;
                 }
             }
-            dc.type = allNumeric ? _T("numeric") : _T("text");
+            if (!hasNonEmpty) dc.type = _T("text");
+            else if (allDate) dc.type = _T("date");
+            else if (allNumeric) dc.type = _T("numeric");
+            else dc.type = _T("text");
             m_dataTable.columns.push_back(dc);
         }
     }

@@ -105,18 +105,16 @@ void CDataSummaryView::PopulateList()
         int idx = lc.InsertItem(i, col.name);
         lc.SetItemText(idx, COL_TYPE,      col.type);
 
-        // 고유값 수: sampleValues 쉼표 기준 카운트 (실제 값은 ColumnSchema 확장 시 교체)
-        CString uniqueStr = _T("-");
+        CString uniqueStr;
+        uniqueStr.Format(_T("%d"), col.uniqueCount);
         lc.SetItemText(idx, COL_UNIQUE, uniqueStr);
 
-        // 결측치
         CString nullStr;
         nullStr.Format(_T("%d"), col.nullCount);
         lc.SetItemText(idx, COL_NULLCOUNT, nullStr);
 
-        // 최솟값/최댓값: numeric 타입만 계산 가능 (현재는 샘플에서 추출)
-        lc.SetItemText(idx, COL_MIN, _T("-"));
-        lc.SetItemText(idx, COL_MAX, _T("-"));
+        lc.SetItemText(idx, COL_MIN, col.minValue.IsEmpty() ? _T("-") : col.minValue);
+        lc.SetItemText(idx, COL_MAX, col.maxValue.IsEmpty() ? _T("-") : col.maxValue);
 
         // 정렬용 lParam에 인덱스 저장
         lc.SetItemData(idx, (DWORD_PTR)i);

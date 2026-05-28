@@ -19,7 +19,8 @@
       "mcp__plugin_oh-my-claudecode_t__state_clear",
       "mcp__plugin_oh-my-claudecode_t__lsp_diagnostics",
       "mcp__plugin_oh-my-claudecode_t__ast_grep_search",
-      "mcp__plugin_oh-my-claudecode_t__python_repl"
+      "mcp__plugin_oh-my-claudecode_t__python_repl",
+      "mcp__plugin_oh-my-claudecode_t__lsp_document_symbols"
     ],
     "deny": [
       "Edit(tests/**)",

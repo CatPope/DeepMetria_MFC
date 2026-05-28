@@ -85,8 +85,11 @@ struct ColumnSchema {
     int     nullCount;
     int     index;      // 컬럼 인덱스 (0-based)
     CString sampleValues; // 콤마 구분 샘플
+    int     uniqueCount;  // 고유값 수
+    CString minValue;     // 최솟값 (numeric/date)
+    CString maxValue;     // 최댓값 (numeric/date)
 
-    ColumnSchema() : nullCount(0), index(0) {}
+    ColumnSchema() : nullCount(0), index(0), uniqueCount(0) {}
 };
 
 struct DataSummary {
