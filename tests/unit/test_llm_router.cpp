@@ -159,3 +159,150 @@ TEST_F(LLMRouterTest, ProviderSwitching_ReflectsLastSetProvider) {
     router_->SetProvider(LLMRouter::Provider::Claude);
     EXPECT_EQ(router_->GetProvider(), LLMRouter::Provider::Claude);
 }
+
+
+// ============================================================
+// 폴백(QUOTA) 동작 검증 픽스처
+// SetProviderForTest 시임으로 MockLLMProvider를 주입하여
+// 실제 네트워크 호출 없이 모델/프로바이더 전환을 검증한다.
+// ============================================================
+#include "MockLLMProvider.h"
+
+using ::testing::_;
+using ::testing::DoAll;
+using ::testing::Return;
+using ::testing::SetArgReferee;
+using ::testing::NiceMock;
+
+class LLMRouterFallbackTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        router_ = &LLMRouter::Instance();
+        router_->SetModel(_T(""));
+        router_->SetApiKey(LLMRouter::Provider::Claude, _T(""));
+        router_->SetApiKey(LLMRouter::Provider::OpenAI, _T(""));
+        router_->SetApiKey(LLMRouter::Provider::Gemini, _T(""));
+    }
+
+    // 지정 프로바이더 슬롯에 NiceMock을 주입하고 원시 포인터를 반환한다.
+    NiceMock<MockLLMProvider>* InjectMock(LLMRouter::Provider p) {
+        auto mock = std::make_unique<NiceMock<MockLLMProvider>>();
+        NiceMock<MockLLMProvider>* raw = mock.get();
+        router_->SetProviderForTest(p, std::move(mock));
+        return raw;
+    }
+
+    LLMRouter* router_ = nullptr;
+};
+
+// -- GetFallbackModel: Gemini 체인 전체 --
+TEST_F(LLMRouterFallbackTest, GetFallbackModel_GeminiChain_WalksToBottomThenEmpty) {
+    EXPECT_STREQ(router_->GetFallbackModel(LLMRouter::Provider::Gemini, _T("gemini-3.1-pro-preview")),
+                 _T("gemini-2.5-pro"));
+    EXPECT_STREQ(router_->GetFallbackModel(LLMRouter::Provider::Gemini, _T("gemini-2.5-pro")),
+                 _T("gemini-2.5-flash"));
+    EXPECT_STREQ(router_->GetFallbackModel(LLMRouter::Provider::Gemini, _T("gemini-2.5-flash")),
+                 _T("gemini-3.1-flash-lite"));
+    EXPECT_TRUE(router_->GetFallbackModel(LLMRouter::Provider::Gemini, _T("gemini-3.1-flash-lite")).IsEmpty());
+}
+
+TEST_F(LLMRouterFallbackTest, GetFallbackModel_EmptyModel_ReturnsSecondEntry) {
+    EXPECT_STREQ(router_->GetFallbackModel(LLMRouter::Provider::Gemini, _T("")),
+                 _T("gemini-2.5-pro"));
+    EXPECT_STREQ(router_->GetFallbackModel(LLMRouter::Provider::Claude, _T("")),
+                 _T("claude-sonnet-4-5-20250514"));
+}
+
+TEST_F(LLMRouterFallbackTest, GetFallbackModel_UnknownModel_ReturnsEmpty) {
+    EXPECT_TRUE(router_->GetFallbackModel(LLMRouter::Provider::Gemini, _T("no-such-model")).IsEmpty());
+}
+
+TEST_F(LLMRouterFallbackTest, GetFallbackModel_OpenAIChain_WalksToBottomThenEmpty) {
+    EXPECT_STREQ(router_->GetFallbackModel(LLMRouter::Provider::OpenAI, _T("gpt-4o")),
+                 _T("gpt-4o-mini"));
+    EXPECT_STREQ(router_->GetFallbackModel(LLMRouter::Provider::OpenAI, _T("gpt-4o-mini")),
+                 _T("o4-mini"));
+    EXPECT_TRUE(router_->GetFallbackModel(LLMRouter::Provider::OpenAI, _T("o4-mini")).IsEmpty());
+}
+
+// -- 같은 프로바이더 내 모델 전환 --
+TEST_F(LLMRouterFallbackTest, WithinProvider_QuotaThenSuccess_DowngradesModel) {
+    NiceMock<MockLLMProvider>* gemini = InjectMock(LLMRouter::Provider::Gemini);
+    gemini->SetupProviderInfo(_T("Gemini"), _T("gemini-2.5-flash"));
+
+    router_->SetProvider(LLMRouter::Provider::Gemini);
+    router_->SetModel(_T("gemini-2.5-pro"));
+
+    AppError quota(_T("QUOTA_EXCEEDED"), _T("한도 초과"), 2);
+    EXPECT_CALL(*gemini, Chat(_, _, _, _, _))
+        .WillOnce(DoAll(SetArgReferee<4>(quota), Return(FALSE)))
+        .WillOnce(DoAll(SetArgReferee<3>(CString(_T("ok"))), Return(TRUE)));
+
+    CString  resp;
+    AppError err;
+    BOOL result = router_->ChatWithRetry(_T("sys"), _T("user"), resp, err, 3);
+
+    EXPECT_EQ(result, TRUE);
+    EXPECT_EQ(router_->GetProvider(), LLMRouter::Provider::Gemini);
+    EXPECT_STREQ(router_->GetModel(), _T("gemini-2.5-flash"));
+    EXPECT_FALSE(router_->TakeFallbackNotice().IsEmpty());
+}
+
+// -- 크로스 프로바이더 전환 (체인 바닥에서) --
+TEST_F(LLMRouterFallbackTest, CrossProvider_GeminiBottom_SwitchesToOpenAI) {
+    NiceMock<MockLLMProvider>* gemini = InjectMock(LLMRouter::Provider::Gemini);
+    NiceMock<MockLLMProvider>* openai = InjectMock(LLMRouter::Provider::OpenAI);
+
+    gemini->SetupProviderInfo(_T("Gemini"), _T("gemini-2.5-flash"));
+    openai->SetupProviderInfo(_T("OpenAI"), _T("gpt-4o"));
+
+    ON_CALL(*gemini, HasApiKey()).WillByDefault(Return(true));
+    ON_CALL(*openai, HasApiKey()).WillByDefault(Return(true));
+
+    AppError quota(_T("QUOTA_EXCEEDED"), _T("한도 초과"), 2);
+    ON_CALL(*gemini, Chat(_, _, _, _, _))
+        .WillByDefault(DoAll(SetArgReferee<4>(quota), Return(FALSE)));
+    ON_CALL(*openai, Chat(_, _, _, _, _))
+        .WillByDefault(DoAll(SetArgReferee<3>(CString(_T("ok"))), Return(TRUE)));
+
+    router_->SetProvider(LLMRouter::Provider::Gemini);
+    router_->SetModel(_T("gemini-3.1-flash-lite"));
+
+    CString  resp;
+    AppError err;
+    BOOL result = router_->ChatWithRetry(_T("sys"), _T("user"), resp, err, 3);
+
+    EXPECT_EQ(result, TRUE);
+    EXPECT_EQ(router_->GetProvider(), LLMRouter::Provider::OpenAI);
+    EXPECT_STREQ(router_->GetModel(), _T("o4-mini"));
+    EXPECT_FALSE(router_->TakeFallbackNotice().IsEmpty());
+}
+
+// -- 대체 프로바이더 없음: 모든 모델 소진 --
+TEST_F(LLMRouterFallbackTest, NoAlternative_AllExhausted_ReturnsFalse) {
+    NiceMock<MockLLMProvider>* gemini = InjectMock(LLMRouter::Provider::Gemini);
+    NiceMock<MockLLMProvider>* openai = InjectMock(LLMRouter::Provider::OpenAI);
+    NiceMock<MockLLMProvider>* claude = InjectMock(LLMRouter::Provider::Claude);
+
+    gemini->SetupProviderInfo(_T("Gemini"), _T("gemini-2.5-flash"));
+
+    ON_CALL(*gemini, HasApiKey()).WillByDefault(Return(true));
+    ON_CALL(*openai, HasApiKey()).WillByDefault(Return(false));
+    ON_CALL(*claude, HasApiKey()).WillByDefault(Return(false));
+
+    AppError quota(_T("QUOTA_EXCEEDED"), _T("한도 초과"), 2);
+    ON_CALL(*gemini, Chat(_, _, _, _, _))
+        .WillByDefault(DoAll(SetArgReferee<4>(quota), Return(FALSE)));
+
+    router_->SetProvider(LLMRouter::Provider::Gemini);
+    router_->SetModel(_T("gemini-3.1-flash-lite"));
+
+    CString  resp;
+    AppError err;
+    BOOL result = router_->ChatWithRetry(_T("sys"), _T("user"), resp, err, 3);
+
+    EXPECT_EQ(result, FALSE);
+    EXPECT_EQ(err.code, CString(_T("QUOTA_EXCEEDED")));
+    CString notice = router_->TakeFallbackNotice();
+    EXPECT_NE(notice.Find(_T("모든")), -1) << "모든 모델 소진 안내가 없음";
+}

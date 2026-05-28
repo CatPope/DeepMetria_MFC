@@ -30,6 +30,7 @@ public:
     MOCK_METHOD(CString, GetProviderName, (), (const, override));
     MOCK_METHOD(CString, GetDefaultModel, (), (const, override));
     MOCK_METHOD(void,    SetApiKey,       (const CString& apiKey), (override));
+    MOCK_METHOD(bool,    HasApiKey,       (), (const, override));
 
     // ── 헬퍼: 성공 응답 고정값 설정 ───────────────────────
     // 호출 시 outResponse에 fixedResponse를 기록하고 TRUE를 반환하도록 설정한다.

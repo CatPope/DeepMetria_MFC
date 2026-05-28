@@ -15,6 +15,8 @@
 #endif
 #include "Domain/Orchestrator/AnalysisFlow.h"
 #include "Infrastructure/LLM/LLMRouter.h"
+#include "Domain/Analysis/AnalysisTools.h"   // AnalysisTools::GroupByAggregate
+#include "Domain/Analysis/ChartSelector.h"   // ChartSelector::SelectChart
 #include "MockLLMProvider.h"   // tests/mocks/MockLLMProvider.h
 
 using ::testing::_;
