@@ -29,6 +29,7 @@ public:
     CString GetProviderName() const override { return _T("Gemini"); }
     CString GetDefaultModel() const override { return _T("gemini-2.5-flash"); }
     void    SetApiKey(const CString& apiKey) override { m_apiKey = apiKey; }
+    bool    HasApiKey() const override { return !m_apiKey.IsEmpty(); }
 
 private:
     // API URL 구성 (모델명 + API 키 포함)

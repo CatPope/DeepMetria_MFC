@@ -6,6 +6,51 @@
 
 // afxwin.h와 Types.h는 stdafx.h(PCH)에서 이미 포함됨
 #include "../Resources/resource.h"
+#include "../Renderer/ChartRenderer.h"
+
+// ============================================================
+// CPreviewStatic — 미리보기 전용 서브클래스 (이 파일에서만 사용)
+// ============================================================
+class CPreviewStatic : public CStatic
+{
+public:
+    CPreviewStatic() {}
+    virtual ~CPreviewStatic() {}
+
+    // 렌더링에 사용할 ChartConfig 설정
+    void SetConfig(const ChartConfig& config)
+    {
+        m_config = config;
+    }
+
+protected:
+    afx_msg void OnPaint()
+    {
+        CPaintDC dc(this);
+        CRect rc;
+        GetClientRect(&rc);
+        if (rc.IsRectEmpty())
+            return;
+
+        // 오프스크린 DC로 깜빡임 방지
+        CDC memDC;
+        memDC.CreateCompatibleDC(&dc);
+        CBitmap bmp;
+        bmp.CreateCompatibleBitmap(&dc, rc.Width(), rc.Height());
+        CBitmap* pOldBmp = memDC.SelectObject(&bmp);
+
+        CChartRenderer::Render(&memDC, rc, m_config);
+
+        dc.BitBlt(rc.left, rc.top, rc.Width(), rc.Height(), &memDC, 0, 0, SRCCOPY);
+
+        memDC.SelectObject(pOldBmp);
+    }
+
+    DECLARE_MESSAGE_MAP()
+
+private:
+    ChartConfig m_config;
+};
 
 // ============================================================
 // CFormatEditorDlg — CDialogEx 파생
@@ -41,14 +86,14 @@ private:
 
     VisualizationInfo m_vizInfo;
 
-    CSliderCtrl m_sliderWidth;
-    CSliderCtrl m_sliderHeight;
-    CEdit       m_editWidth;
-    CEdit       m_editHeight;
-    CButton     m_btnColor;
-    CStatic     m_staticColorPreview;
-    CComboBox   m_comboChartType;
-    CStatic     m_staticPreview;
+    CSliderCtrl    m_sliderWidth;
+    CSliderCtrl    m_sliderHeight;
+    CEdit          m_editWidth;
+    CEdit          m_editHeight;
+    CButton        m_btnColor;
+    CStatic        m_staticColorPreview;
+    CComboBox      m_comboChartType;
+    CPreviewStatic m_staticPreview;   // 서브클래스로 교체
 
     COLORREF    m_currentColor;
 };

@@ -176,8 +176,8 @@ std::vector<ColumnSchema> DataSourceService::GetSchema(const DataTable& data)
                     if (!hasValue || val > maxStr) maxStr = val;
                     hasValue = true;
                 }
-                if (sampleCount < 3) {
-                    if (sampleCount > 0) samples += _T(",");
+                if (sampleCount < 5) {
+                    if (sampleCount > 0) samples += _T(", ");
                     samples += val;
                     ++sampleCount;
                 }

@@ -272,9 +272,16 @@ LRESULT CQueryInputView::OnAnalysisDone(WPARAM wParam, LPARAM lParam)
 
     m_progressBar.SetPos(100);
 
+    // 사용량 한도 초과로 모델이 자동 전환된 경우, 흐름을 끊지 않고(모달 없이)
+    // 상태 텍스트로 사용자에게 안내한다.
+    CString fallbackNotice = pFlow->fallbackNotice;
+
     if (pFlow->state == AnalysisFlowState::Done)
     {
-        UpdateStatusText(_T("분석 완료."));
+        if (!fallbackNotice.IsEmpty())
+            UpdateStatusText(fallbackNotice + _T(" 분석 완료."));
+        else
+            UpdateStatusText(_T("분석 완료."));
         if (m_pDashboardView && ::IsWindow(m_pDashboardView->GetSafeHwnd()))
         {
             m_pDashboardView->SendMessage(WM_VISUALIZATION_READY, wParam,

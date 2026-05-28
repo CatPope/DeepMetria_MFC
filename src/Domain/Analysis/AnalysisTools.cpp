@@ -169,7 +169,7 @@ CString AnalysisTools::GroupByAggregate(const DataTable& data,
     std::map<CString, std::vector<double>> groups;
     const auto& gVals = data.columns[gi].values;
     const auto& vVals = data.columns[vi].values;
-    int n = min((int)gVals.size(), (int)vVals.size());
+    int n = (std::min)((int)gVals.size(), (int)vVals.size());
 
     for (int i = 0; i < n; ++i) {
         TCHAR* end = nullptr;
@@ -206,7 +206,7 @@ CString AnalysisTools::TimeSeriesAnalysis(const DataTable& data,
 {
     double meanX = CalcMean(x);
     double meanY = CalcMean(y);
-    size_t minLen = min(x.size(), y.size());
+    size_t minLen = (std::min)(x.size(), y.size());
     double num = 0.0, dx = 0.0, dy = 0.0;
     for (size_t k = 0; k < minLen; ++k) {
         double a = x[k] - meanX;
@@ -293,7 +293,7 @@ CString AnalysisTools::TopN(const DataTable& data,
             return ascending ? (da < db) : (da > db);
         });
 
-    int take = min(n, rowCount);
+    int take = (std::min)(n, rowCount);
     CString json = _T("{\"sort_col\":\"") + EscapeJsonString(col)
                  + _T("\",\"ascending\":") + (ascending ? _T("true") : _T("false"))
                  + _T(",\"rows\":[");
@@ -370,7 +370,7 @@ CString AnalysisTools::CrossTabulation(const DataTable& data,
     // (rowVal, colVal) → count
     std::map<CString, std::map<CString, int>> table;
     std::map<CString, int> colHeaders;
-    int n = min((int)data.columns[ri].values.size(),
+    int n = (std::min)((int)data.columns[ri].values.size(),
                 (int)data.columns[ci].values.size());
 
     for (int i = 0; i < n; ++i) {
@@ -434,7 +434,7 @@ CString AnalysisTools::MovingAverage(const DataTable& data,
 
     for (int i = 0; i < n; ++i) {
         if (i > 0) json += _T(",");
-        int start = max(0, i - window + 1);
+        int start = (std::max)(0, i - window + 1);
         double sum = 0.0;
         for (int k = start; k <= i; ++k) sum += vals[k];
         double ma = sum / static_cast<double>(i - start + 1);
@@ -468,7 +468,7 @@ CString AnalysisTools::Percentile(const DataTable&         data,
         double p = percentiles[i];
         double pos = p / 100.0 * (n - 1);
         int lo = (int)pos;
-        int hi = min(lo + 1, n - 1);
+        int hi = (std::min)(lo + 1, n - 1);
         double frac = pos - lo;
         double val = (n > 0) ? vals[lo] * (1.0 - frac) + vals[hi] * frac : 0.0;
         CString entry;
@@ -495,7 +495,7 @@ CString AnalysisTools::DateGroupAggregate(const DataTable& data,
     // 기간 키 추출 (YYYY-MM 또는 YYYY)
     std::map<CString, double> sumMap;
     std::map<CString, int>    cntMap;
-    int n = min((int)data.columns[di].values.size(),
+    int n = (std::min)((int)data.columns[di].values.size(),
                 (int)data.columns[vi].values.size());
 
     for (int i = 0; i < n; ++i) {
@@ -514,7 +514,7 @@ CString AnalysisTools::DateGroupAggregate(const DataTable& data,
         else if (period.CompareNoCase(_T("month")) == 0 && dateStr.GetLength() >= 7)
             key = dateStr.Left(7);
         else
-            key = dateStr.Left(min(10, dateStr.GetLength())); // day/week fallback
+            key = dateStr.Left((std::min)(10, dateStr.GetLength())); // day/week fallback
 
         sumMap[key] += d;
         cntMap[key]++;

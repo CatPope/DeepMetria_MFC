@@ -10,6 +10,7 @@
 #include "../Infrastructure/Cache/AnalysisCache.h"
 #include "../Dialog/FileOpenDialog.h"
 #include "../Dialog/SettingsDialog.h"
+#include "../Dialog/ExportDialog.h"
 #include "../Domain/DataSource/DataSourceService.h"
 #include "../Infrastructure/LLM/LLMRouter.h"
 #include <wincrypt.h>
@@ -206,7 +207,39 @@ void CDeepMetriaApp::OnToolsSettings()
 // ---- 도구 > 내보내기 ----
 void CDeepMetriaApp::OnToolsExport()
 {
-    AfxMessageBox(_T("차트를 선택한 후 내보내기를 사용하세요."), MB_ICONINFORMATION);
+    // 현재 문서 가져오기 (OnFileOpenData와 동일한 패턴)
+    CDocument* pDoc = nullptr;
+    POSITION pos = GetFirstDocTemplatePosition();
+    if (pos)
+    {
+        CDocTemplate* pTemplate = GetNextDocTemplate(pos);
+        if (pTemplate)
+        {
+            POSITION docPos = pTemplate->GetFirstDocPosition();
+            if (docPos)
+                pDoc = pTemplate->GetNextDoc(docPos);
+        }
+    }
+
+    CDeepMetriaDoc* pMetriaDoc = dynamic_cast<CDeepMetriaDoc*>(pDoc);
+    if (!pMetriaDoc)
+    {
+        AfxMessageBox(_T("문서 객체를 찾을 수 없습니다."), MB_ICONERROR);
+        return;
+    }
+
+    // 활성 차트(시각화) 데이터 확보 — 문서의 첫 번째 시각화를 사용
+    const std::vector<VisualizationInfo>& vizList = pMetriaDoc->GetVisualizations();
+    if (vizList.empty())
+    {
+        AfxMessageBox(_T("내보낼 차트가 없습니다. 먼저 분석을 실행하여 차트를 생성하세요."),
+                      MB_ICONINFORMATION);
+        return;
+    }
+
+    // 내보내기 다이얼로그를 활성 차트 데이터로 시드하여 표시
+    CExportDialog dlg(vizList.front(), m_pMainWnd);
+    dlg.DoModal();
 }
 
 // ---- 분석 > 새 질문 ----

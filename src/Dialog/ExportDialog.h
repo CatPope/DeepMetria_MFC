@@ -24,7 +24,7 @@ public:
 
 protected:
     // 컨트롤
-    CComboBox       m_comboFormat;   // 내보내기 형식 (PNG, BMP, CSV)
+    CComboBox       m_comboFormat;   // 내보내기 형식 (PNG, BMP, CSV, HTML, PDF)
     CEdit           m_editPath;      // 저장 경로
     CButton         m_btnBrowse;     // 폴더 선택
     CSpinButtonCtrl m_spinWidth;     // 이미지 너비 (PNG/BMP)
@@ -54,7 +54,15 @@ private:
     BOOL ExportAsPng(const CString& path, int width, int height);
     BOOL ExportAsBmp(const CString& path, int width, int height);
     BOOL ExportAsCsv(const CString& path);
+    BOOL ExportAsHtml(const CString& path, int width, int height);
+    BOOL ExportAsPdf(const CString& path, int width, int height);
 
     // 선택된 형식 문자열 반환
     CString GetSelectedFormat() const;
+
+    // 차트 데이터(dataJson)를 HTML <table> 문자열로 변환
+    CString BuildHtmlTable() const;
+
+    // 임시 PNG 파일에 차트를 렌더링하고 경로를 반환 (실패 시 빈 문자열)
+    CString RenderChartToTempPng(int width, int height) const;
 };

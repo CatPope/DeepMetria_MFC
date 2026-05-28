@@ -218,7 +218,15 @@ BOOL AnalysisOrchestrator::Step1_Plan(AnalysisFlow&     flow,
     LLMRouter& llmRouter = LLMRouter::Instance();
     CString    llmResponse;
 
-    if (!llmRouter.Chat(systemPrompt, userPrompt, llmResponse, outError))
+    // 사용량 한도(QUOTA) 초과 시 하위 모델로 자동 전환·재시도하는 경로를 사용한다.
+    BOOL ok = llmRouter.ChatWithRetry(systemPrompt, userPrompt, llmResponse, outError);
+
+    // 모델 폴백이 발생했으면 안내 문구를 플로우에 기록(UI 표시용).
+    CString notice = llmRouter.TakeFallbackNotice();
+    if (!notice.IsEmpty())
+        flow.fallbackNotice = notice;
+
+    if (!ok)
         return FALSE;
 
     flow.plan = llmResponse;
@@ -298,7 +306,16 @@ BOOL AnalysisOrchestrator::Step3_Interpret(AnalysisFlow&    flow,
         _T("당신은 DeepMetria의 데이터 분석 인사이트 생성기입니다.\n")
         _T("주어진 분석 결과를 바탕으로 비즈니스 인사이트를 한국어로 3-5문장으로 설명하세요.");
 
-    if (!llmRouter.Chat(systemPrompt, prompt, llmResponse, outError)) {
+    // 사용량 한도(QUOTA) 초과 시 하위 모델로 자동 전환·재시도하는 경로를 사용한다.
+    BOOL ok = llmRouter.ChatWithRetry(systemPrompt, prompt, llmResponse, outError);
+
+    // 모델 폴백이 발생했으면 안내 문구를 플로우에 기록(UI 표시용).
+    // 1단계에서 이미 기록된 안내가 있으면 덮어쓰지 않고 유지한다.
+    CString notice = llmRouter.TakeFallbackNotice();
+    if (!notice.IsEmpty() && flow.fallbackNotice.IsEmpty())
+        flow.fallbackNotice = notice;
+
+    if (!ok) {
         // LLM 실패 시 기본 인사이트 텍스트 사용 (치명적이지 않음)
         flow.insight = _T("분석이 완료되었습니다. 결과를 차트로 확인하세요.");
         return TRUE;

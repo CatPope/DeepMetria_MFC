@@ -6,6 +6,7 @@
 #include "../../Common/Types.h"
 #include "LLMProvider.h"
 #include <memory>
+#include <vector>
 
 // 비동기 완료 콜백 파라미터 구조체 (PostMessage LPARAM로 전달, 수신 측에서 delete)
 struct LLMAsyncResult {
@@ -38,6 +39,19 @@ public:
 
     // 사용할 모델 설정 (빈 문자열이면 프로바이더 기본값 사용)
     void SetModel(const CString& model) { m_model = model; }
+
+    // 현재 설정된 모델 조회 (빈 문자열이면 프로바이더 기본값)
+    CString GetModel() const { return m_model; }
+
+    // ── 사용량 한도(QUOTA) 폴백 ──────────────────────────────
+    // 같은 프로바이더 내에서 currentModel보다 한 단계 낮은 모델 ID를 반환한다.
+    // currentModel이 비어 있으면 해당 프로바이더의 기본(최상위) 모델로 간주한다.
+    // 더 낮은 모델이 없거나 알 수 없는 모델이면 빈 CString을 반환한다.
+    CString GetFallbackModel(Provider p, const CString& currentModel) const;
+
+    // 마지막 폴백 전환 안내 문구를 반환하고 내부 값을 비운다(소비형 getter).
+    // 폴백이 발생하지 않았으면 빈 CString.
+    CString TakeFallbackNotice();
 
     // ── 동기 호출 (백그라운드 스레드에서 실행) ────────────
     // systemPrompt : 시스템 역할 지시
@@ -80,6 +94,12 @@ public:
                               const CString& apiKey,
                               AppError&      outError);
 
+#ifdef DEEPMETRIA_UNIT_TEST
+    // 테스트 전용 주입 시임: 지정 프로바이더의 인스턴스를 목으로 교체한다.
+    // (DEEPMETRIA_UNIT_TEST는 테스트 빌드에서만 정의됨)
+    void SetProviderForTest(Provider p, std::unique_ptr<ILLMProvider> prov);
+#endif
+
 private:
     LLMRouter();
     ~LLMRouter();
@@ -88,6 +108,15 @@ private:
 
     // 현재 활성 프로바이더 인스턴스 반환
     ILLMProvider* ActiveProvider();
+
+    // 지정 프로바이더의 인스턴스 반환 (크로스 폴백에서 키 보유 여부 확인용)
+    ILLMProvider* ProviderInstance(Provider p);
+
+    // 프로바이더 표시 이름 반환 ("Claude" | "OpenAI" | "Gemini")
+    static CString ProviderName(Provider p);
+
+    // 프로바이더별 폴백 체인(최상위→최하위 모델 순서)을 반환한다.
+    static const std::vector<CString>& GetFallbackChain(Provider p);
 
     // DPAPI 암호화/복호화
     static CString EncryptDPAPI(const CString& plainText);
@@ -107,6 +136,7 @@ private:
 
     Provider                  m_activeProvider;
     CString                   m_model;          // 빈 문자열이면 프로바이더 기본값
+    CString                   m_fallbackNotice; // 마지막 모델 폴백 전환 안내(소비 시 비움)
     std::unique_ptr<ILLMProvider> m_pClaude;
     std::unique_ptr<ILLMProvider> m_pOpenAI;
     std::unique_ptr<ILLMProvider> m_pGemini;

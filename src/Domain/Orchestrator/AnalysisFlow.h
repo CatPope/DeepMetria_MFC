@@ -31,6 +31,7 @@ struct AnalysisFlow {
     CString           insight;      // LLM이 생성한 인사이트 텍스트
     ChartConfig       chartConfig;  // 결정된 차트 설정
     AppError          lastError;    // 마지막 오류 정보
+    CString           fallbackNotice; // 사용량 한도 초과로 모델 전환 시 사용자 안내 문구
 
     AnalysisFlow()
         : state(AnalysisFlowState::Idle)

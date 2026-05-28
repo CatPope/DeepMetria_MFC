@@ -39,4 +39,7 @@ public:
 
     // API 키 설정 (레지스트리/DPAPI에서 복호화된 값)
     virtual void SetApiKey(const CString& apiKey) = 0;
+
+    // API 키가 설정되어 있는지 여부 (크로스 프로바이더 폴백 후보 판별용)
+    virtual bool HasApiKey() const = 0;
 };

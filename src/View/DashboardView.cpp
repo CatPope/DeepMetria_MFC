@@ -42,6 +42,16 @@ CDashboardView::~CDashboardView()
 void CDashboardView::OnInitialUpdate()
 {
     CScrollView::OnInitialUpdate();
+
+    // 빈 상태 안내 라벨 생성 (DI-12) — 키워드 '차트'/'추가' 포함
+    if (!m_emptyGuide.GetSafeHwnd())
+    {
+        m_emptyGuide.Create(
+            _T("차트를 추가하려면 질문을 입력하세요."),
+            WS_CHILD | SS_CENTER | SS_CENTERIMAGE,
+            CRect(0, 0, 0, 0), this);
+    }
+
     RecalcScrollSize();
 
     // 툴팁 초기화
@@ -138,6 +148,7 @@ void CDashboardView::RecalcScrollSize()
     if (m_visualizations.empty())
     {
         SetScrollSizes(MM_TEXT, CSize(0, 0));
+        UpdateEmptyGuide();
         return;
     }
 
@@ -147,6 +158,26 @@ void CDashboardView::RecalcScrollSize()
     int rows    = ((int)m_visualizations.size() + CARD_COLS - 1) / CARD_COLS;
     int totalH  = rows * (CARD_H + CARD_MARGIN) + CARD_MARGIN;
     SetScrollSizes(MM_TEXT, CSize(clientRect.Width(), totalH));
+    UpdateEmptyGuide();
+}
+
+// 빈 상태 안내 라벨의 표시/위치 갱신 (DI-12)
+void CDashboardView::UpdateEmptyGuide()
+{
+    if (!m_emptyGuide.GetSafeHwnd())
+        return;
+
+    BOOL bEmpty = m_visualizations.empty();
+    m_emptyGuide.ShowWindow(bEmpty ? SW_SHOW : SW_HIDE);
+
+    if (bEmpty)
+    {
+        CRect rc;
+        GetClientRect(&rc);
+        const int h = 28;
+        int y = rc.top + rc.Height() / 2 - h / 2;
+        m_emptyGuide.MoveWindow(rc.left, y, rc.Width(), h);
+    }
 }
 
 // ============================================================
@@ -156,13 +187,7 @@ void CDashboardView::OnDraw(CDC* pDC)
 {
     if (m_visualizations.empty())
     {
-        // 빈 상태 안내 텍스트
-        CRect clientRect;
-        GetClientRect(&clientRect);
-        pDC->SetTextColor(RGB(160, 160, 160));
-        pDC->SetBkMode(TRANSPARENT);
-        pDC->DrawText(_T("질문을 입력하면 분석 결과가 여기에 표시됩니다."),
-                      &clientRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        // 빈 상태 안내는 m_emptyGuide(CStatic)가 표시 (DI-12)
         return;
     }
 

@@ -65,7 +65,9 @@ BOOL HttpClient::PostJson(const std::string&              url,
 
         TRACE(_T("[HttpClient] HTTP %ld response: %s\n"),
               httpCode, StringUtils::FromUTF8(outBody).GetString());
-        outError.Set(_T("API_ERROR"), msg);
+        // 429(사용량 한도 초과)는 상위 계층(LLMRouter)이 모델 폴백을 판단할 수 있도록
+        // 구분 가능한 코드로 설정한다.
+        outError.Set(httpCode == 429 ? _T("QUOTA_EXCEEDED") : _T("API_ERROR"), msg);
         return FALSE;
     }
 
@@ -135,8 +137,19 @@ BOOL HttpClient::PostJsonSSE(const std::string&              url,
 
     if (httpCode != 200) {
         CString msg;
-        msg.Format(_T("API SSE 오류 (HTTP %ld)"), httpCode);
-        outError.Set(_T("API_SSE_ERROR"), msg);
+        if (httpCode == 429)
+            msg = _T("API 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.");
+        else if (httpCode == 401 || httpCode == 403)
+            msg = _T("API 인증에 실패했습니다. API 키를 확인해주세요.");
+        else if (httpCode >= 500)
+            msg.Format(_T("API 서버 오류가 발생했습니다. (HTTP %ld)"), httpCode);
+        else
+            msg.Format(_T("API 오류가 발생했습니다. (HTTP %ld)"), httpCode);
+
+        TRACE(_T("[HttpClient] SSE HTTP %ld response\n"), httpCode);
+        // 429(사용량 한도 초과)는 상위 계층(LLMRouter)이 모델 폴백을 판단할 수 있도록
+        // 구분 가능한 코드로 설정한다.
+        outError.Set(httpCode == 429 ? _T("QUOTA_EXCEEDED") : _T("API_SSE_ERROR"), msg);
         return FALSE;
     }
 

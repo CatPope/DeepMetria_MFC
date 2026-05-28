@@ -3,6 +3,7 @@
 
 #include "stdafx.h"
 #include "DeepMetriaDoc.h"
+#include "ColumnTypeInference.h"
 #include "../Infrastructure/Parser/CSVParser.h"
 #include "../Infrastructure/Parser/ExcelParser.h"
 #include "../Infrastructure/Parser/JsonParser.h"
@@ -121,54 +122,8 @@ BOOL CDeepMetriaDoc::LoadFile(const CString& filePath, AppError& outError)
                 dc.values.push_back(_T(""));
         }
 
-        // 타입 추론: date → numeric → text 순서
-        bool allNumeric = true;
-        bool allDate = true;
-        bool hasNonEmpty = false;
-
-        for (const auto& v : dc.values)
-        {
-            if (v.IsEmpty()) continue;
-            hasNonEmpty = true;
-
-            // 날짜 패턴: YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD
-            if (allDate)
-            {
-                bool isDate = false;
-                if (v.GetLength() >= 10)
-                {
-                    TCHAR sep = v[4];
-                    if ((sep == _T('-') || sep == _T('/') || sep == _T('.')) &&
-                        v[7] == sep &&
-                        _istdigit(v[0]) && _istdigit(v[1]) &&
-                        _istdigit(v[2]) && _istdigit(v[3]) &&
-                        _istdigit(v[5]) && _istdigit(v[6]) &&
-                        _istdigit(v[8]) && _istdigit(v[9]))
-                    {
-                        isDate = true;
-                    }
-                }
-                if (!isDate) allDate = false;
-            }
-
-            // 숫자 검사
-            if (allNumeric)
-            {
-                TCHAR* endPtr = nullptr;
-                _tcstod(v, &endPtr);
-                if (endPtr == (LPCTSTR)v || *endPtr != _T('\0'))
-                    allNumeric = false;
-            }
-        }
-
-        if (!hasNonEmpty)
-            dc.type = _T("text");
-        else if (allDate)
-            dc.type = _T("date");
-        else if (allNumeric)
-            dc.type = _T("numeric");
-        else
-            dc.type = _T("text");
+        // 타입 추론: date → numeric → text 순서 (ColumnTypeInference.h 통합 구현)
+        dc.type = InferColumnType(dc.values);
 
         m_dataTable.columns.push_back(dc);
     }
@@ -276,8 +231,18 @@ void CDeepMetriaDoc::ClearVisualizations()
 // ============================================================
 void CDeepMetriaDoc::Serialize(CArchive& ar)
 {
+    // 직렬화 스킴: 선두에 매직 DWORD(0x444D4453 = 'DMDS') + 버전 int 기록.
+    // 개발 단계라 배포된 문서가 없으므로 정확한 round-trip을 우선한다(레거시는 best-effort).
+    // v1: 데이터/요약/시각화(dataJson+position) / v2: 시각화 전체 필드(chartConfig·style·position) 포함
+    const DWORD kDocMagic   = 0x444D4453; // 'DMDS'
+    const int   kDocVersion = 2;
+
     if (ar.IsStoring())
     {
+        // 버전 마커
+        ar << kDocMagic;
+        ar << kDocVersion;
+
         // 기본 정보
         ar << m_dataTable.fileName;
         ar << m_dataTable.rowCount;
@@ -314,7 +279,7 @@ void CDeepMetriaDoc::Serialize(CArchive& ar)
             ar << cs.maxValue;
         }
 
-        // Visualizations
+        // Visualizations (v2: chartConfig 전체 + style + position 전체 보존)
         ar << (int)m_visualizations.size();
         for (const auto& viz : m_visualizations)
         {
@@ -322,7 +287,23 @@ void CDeepMetriaDoc::Serialize(CArchive& ar)
             ar << viz.dashboardId;
             ar << viz.vizType;
             ar << viz.title;
+
+            // ChartConfig 전체
+            ar << viz.chartConfig.chartType;
+            ar << viz.chartConfig.title;
+            ar << viz.chartConfig.xLabel;
+            ar << viz.chartConfig.yLabel;
             ar << viz.chartConfig.dataJson;
+
+            // ChartStyle 전체
+            ar << viz.style.primaryColor;
+            ar << viz.style.fontFamily;
+            ar << viz.style.fontSize;
+            ar << viz.style.showLegend;
+            ar << viz.style.showGrid;
+
+            // LayoutItem(position) 전체 — id 포함
+            ar << viz.position.id;
             ar << viz.position.x;
             ar << viz.position.y;
             ar << viz.position.w;
@@ -333,6 +314,17 @@ void CDeepMetriaDoc::Serialize(CArchive& ar)
     {
         // 역직렬화 — 저장 순서와 동일하게
         DeleteContents();
+
+        // 버전 마커 읽기. 본 앱은 배포된 문서가 없어 정상 경로는 항상 매직+버전을 갖는다.
+        // 매직 불일치(마커 없는 레거시/손상 파일)는 CArchive 선행 버퍼링 특성상 안전한
+        // 되감기가 불가능하므로, 데이터를 잘못 해석해 상태를 오염시키는 대신 빈 문서로
+        // 처리한다(best-effort). loadedVersion >= 2 일 때만 v2 시각화 필드를 읽는다.
+        int   loadedVersion = 0;       // 0 = 알 수 없음(마커 없음/손상)
+        DWORD magic = 0;
+        ar >> magic;
+        if (magic != kDocMagic)
+            return; // DeleteContents()로 이미 초기화됨 → 빈 문서 유지
+        ar >> loadedVersion;
 
         ar >> m_dataTable.fileName;
         ar >> m_dataTable.rowCount;
@@ -379,15 +371,42 @@ void CDeepMetriaDoc::Serialize(CArchive& ar)
         m_visualizations.resize(vizCount);
         for (int i = 0; i < vizCount; ++i)
         {
-            ar >> m_visualizations[i].id;
-            ar >> m_visualizations[i].dashboardId;
-            ar >> m_visualizations[i].vizType;
-            ar >> m_visualizations[i].title;
-            ar >> m_visualizations[i].chartConfig.dataJson;
-            ar >> m_visualizations[i].position.x;
-            ar >> m_visualizations[i].position.y;
-            ar >> m_visualizations[i].position.w;
-            ar >> m_visualizations[i].position.h;
+            VisualizationInfo& viz = m_visualizations[i];
+            ar >> viz.id;
+            ar >> viz.dashboardId;
+            ar >> viz.vizType;
+            ar >> viz.title;
+
+            if (loadedVersion >= 2)
+            {
+                // v2: ChartConfig 전체 + ChartStyle + LayoutItem 전체
+                ar >> viz.chartConfig.chartType;
+                ar >> viz.chartConfig.title;
+                ar >> viz.chartConfig.xLabel;
+                ar >> viz.chartConfig.yLabel;
+                ar >> viz.chartConfig.dataJson;
+
+                ar >> viz.style.primaryColor;
+                ar >> viz.style.fontFamily;
+                ar >> viz.style.fontSize;
+                ar >> viz.style.showLegend;
+                ar >> viz.style.showGrid;
+
+                ar >> viz.position.id;
+                ar >> viz.position.x;
+                ar >> viz.position.y;
+                ar >> viz.position.w;
+                ar >> viz.position.h;
+            }
+            else
+            {
+                // v0/v1 레거시: dataJson + position(x,y,w,h)만 존재
+                ar >> viz.chartConfig.dataJson;
+                ar >> viz.position.x;
+                ar >> viz.position.y;
+                ar >> viz.position.w;
+                ar >> viz.position.h;
+            }
         }
 
         // columns 필드 재구성
@@ -403,42 +422,7 @@ void CDeepMetriaDoc::Serialize(CArchive& ar)
                 else
                     dc.values.push_back(_T(""));
             }
-            bool allNumeric = true;
-            bool allDate = true;
-            bool hasNonEmpty = false;
-            for (const auto& v : dc.values)
-            {
-                if (v.IsEmpty()) continue;
-                hasNonEmpty = true;
-                if (allDate)
-                {
-                    bool isDate = false;
-                    if (v.GetLength() >= 10)
-                    {
-                        TCHAR sep = v[4];
-                        if ((sep == _T('-') || sep == _T('/') || sep == _T('.')) &&
-                            v[7] == sep &&
-                            _istdigit(v[0]) && _istdigit(v[1]) &&
-                            _istdigit(v[2]) && _istdigit(v[3]) &&
-                            _istdigit(v[5]) && _istdigit(v[6]) &&
-                            _istdigit(v[8]) && _istdigit(v[9]))
-                            isDate = true;
-                    }
-                    if (!isDate) allDate = false;
-                }
-
-                if (allNumeric)
-                {
-                    TCHAR* endPtr = nullptr;
-                    _tcstod(v, &endPtr);
-                    if (endPtr == (LPCTSTR)v || *endPtr != _T('\0'))
-                        allNumeric = false;
-                }
-            }
-            if (!hasNonEmpty) dc.type = _T("text");
-            else if (allDate) dc.type = _T("date");
-            else if (allNumeric) dc.type = _T("numeric");
-            else dc.type = _T("text");
+            dc.type = InferColumnType(dc.values); // ColumnTypeInference.h 통합 구현
             m_dataTable.columns.push_back(dc);
         }
     }

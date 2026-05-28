@@ -2,6 +2,13 @@
 #include "FormatEditorDlg.h"
 
 // ============================================================
+// CPreviewStatic 메시지 맵
+// ============================================================
+BEGIN_MESSAGE_MAP(CPreviewStatic, CStatic)
+    ON_WM_PAINT()
+END_MESSAGE_MAP()
+
+// ============================================================
 // IMPLEMENT_DYNAMIC / 메시지 맵
 // ============================================================
 IMPLEMENT_DYNAMIC(CFormatEditorDlg, CDialogEx)
@@ -187,7 +194,7 @@ void CFormatEditorDlg::OnCbnSelchangeChartType()
 }
 
 // ============================================================
-// 미리보기 갱신 — Static 배경색으로 색상 표시
+// 미리보기 갱신 — m_vizInfo의 현재 상태를 CPreviewStatic에 반영
 // ============================================================
 void CFormatEditorDlg::UpdatePreview()
 {
@@ -195,7 +202,26 @@ void CFormatEditorDlg::UpdatePreview()
     m_staticColorPreview.Invalidate();
     m_staticColorPreview.UpdateWindow();
 
-    // 미리보기 static 갱신
+    // ChartConfig에 최신 편집 값 동기화
+    ChartConfig cfg = m_vizInfo.chartConfig;
+
+    // 차트 타입: m_vizInfo.chartConfig.chartType은 OnCbnSelchangeChartType에서
+    // 이미 갱신되지만, 초기화 시점에도 한 번 맞춰줌
+    if (cfg.chartType.IsEmpty())
+        cfg.chartType = m_vizInfo.vizType;
+
+    // primaryColor를 dataJson에 직접 영향 주진 않지만
+    // title 필드에 현재 색상 정보를 표시해 사용자 피드백 제공
+    // (차트 렌더러 자체 색상은 ChartConfig에 없으므로 title로 표시)
+    if (cfg.title.IsEmpty())
+    {
+        CString typeUp = cfg.chartType;
+        typeUp.MakeUpper();
+        cfg.title = typeUp + _T(" 미리보기");
+    }
+
+    // 미리보기 컨트롤에 설정 전달 후 재그리기
+    m_staticPreview.SetConfig(cfg);
     m_staticPreview.Invalidate();
     m_staticPreview.UpdateWindow();
 }

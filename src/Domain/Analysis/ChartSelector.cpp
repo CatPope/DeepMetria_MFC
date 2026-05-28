@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include "ChartSelector.h"
 
+#include <algorithm>
+
 // ============================================================
 // ChartSelector 구현 — 규칙 기반, LLM 미사용
 // Architecture §5.5 / DetailedSpec §7.4 참조
@@ -75,7 +77,7 @@ CString ChartSelector::BuildDefaultTitle(const CString& toolName, const DataTabl
 {
     // 도구명 기반 기본 제목 생성 (파일명 참조)
     CString fileName = data.fileName;
-    int lastSlash = max(fileName.ReverseFind(_T('\\')),
+    int lastSlash = (std::max)(fileName.ReverseFind(_T('\\')),
                         fileName.ReverseFind(_T('/')));
     if (lastSlash >= 0) fileName = fileName.Mid(lastSlash + 1);
 

@@ -29,6 +29,7 @@ public:
     CString GetProviderName() const override { return _T("Claude"); }
     CString GetDefaultModel() const override { return _T("claude-opus-4-5"); }
     void    SetApiKey(const CString& apiKey) override { m_apiKey = apiKey; }
+    bool    HasApiKey() const override { return !m_apiKey.IsEmpty(); }
 
 private:
     // libcurl POST 요청 실행 (HttpClient 위임)

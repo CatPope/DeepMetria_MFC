@@ -6,7 +6,17 @@
 #include <gdiplus.h>
 #pragma comment(lib, "gdiplus.lib")
 
+// PDF 내보내기 (벤더링된 공용 도메인 라이브러리)
+#include "../Infrastructure/Export/pdfgen.h"
+
+// CSV/HTML 포맷 순수 문자열 빌더 (헤더 전용, ATL 전용 — 단위 테스트 대상)
+#include "../Infrastructure/Export/ExportFormatter.h"
+
+#include <wincrypt.h>          // CryptBinaryToString (HTML base64 data URI)
+#pragma comment(lib, "crypt32.lib")
+
 #include <sstream>
+#include <vector>
 
 // ============================================================
 // IMPLEMENT_DYNAMIC / 메시지 맵
@@ -58,6 +68,8 @@ BOOL CExportDialog::OnInitDialog()
     m_comboFormat.AddString(_T("PNG"));
     m_comboFormat.AddString(_T("BMP"));
     m_comboFormat.AddString(_T("CSV"));
+    m_comboFormat.AddString(_T("HTML"));
+    m_comboFormat.AddString(_T("PDF"));
     m_comboFormat.SetCurSel(0);
 
     // 기본 이미지 크기
@@ -102,7 +114,9 @@ void CExportDialog::OnCbnSelchangeFormat()
 void CExportDialog::UpdateSizeControls()
 {
     CString fmt = GetSelectedFormat();
-    BOOL bImage = (fmt == _T("PNG") || fmt == _T("BMP"));
+    // PNG/BMP뿐 아니라 HTML/PDF도 차트 이미지를 포함하므로 크기 컨트롤 사용
+    BOOL bImage = (fmt == _T("PNG") || fmt == _T("BMP") ||
+                   fmt == _T("HTML") || fmt == _T("PDF"));
     m_spinWidth.EnableWindow(bImage);
     m_spinHeight.EnableWindow(bImage);
     m_editWidth.EnableWindow(bImage);
@@ -154,6 +168,10 @@ void CExportDialog::OnBnClickedExport()
         bOk = ExportAsBmp(path, width, height);
     else if (fmt == _T("CSV"))
         bOk = ExportAsCsv(path);
+    else if (fmt == _T("HTML"))
+        bOk = ExportAsHtml(path, width, height);
+    else if (fmt == _T("PDF"))
+        bOk = ExportAsPdf(path, width, height);
 
     if (bOk)
     {
@@ -200,173 +218,217 @@ BOOL CExportDialog::ExportAsCsv(const CString& path)
         return FALSE;
     }
 
+    // 알 수 없는 형식일 때만 제목 줄을 추가로 기록한다(기존 동작 유지).
+    // 포맷 빌더는 순수 문자열 빌딩만 담당한다.
     CT2A utf8Json(dataJson, CP_UTF8);
-    std::string json(utf8Json);
-
+    std::string json(static_cast<const char*>(utf8Json));
     bool isTableFormat = (json.find("\"columns\"") != std::string::npos &&
                           json.find("\"rows\"") != std::string::npos);
     bool isChartFormat = (json.find("\"labels\"") != std::string::npos &&
                           json.find("\"datasets\"") != std::string::npos);
-
-    if (isTableFormat)
-    {
-        // columns/rows 형식 → CSV
-        size_t colStart = json.find("\"columns\"");
-        size_t arrStart = json.find('[', colStart);
-        size_t arrEnd   = json.find(']', arrStart);
-        std::string colArr = json.substr(arrStart + 1, arrEnd - arrStart - 1);
-
-        std::vector<CString> columns;
-        size_t pos = 0;
-        while ((pos = colArr.find('"', pos)) != std::string::npos)
-        {
-            size_t end = colArr.find('"', pos + 1);
-            if (end == std::string::npos) break;
-            std::string col = colArr.substr(pos + 1, end - pos - 1);
-            int wlen = MultiByteToWideChar(CP_UTF8, 0, col.c_str(), -1, nullptr, 0);
-            CString cs;
-            MultiByteToWideChar(CP_UTF8, 0, col.c_str(), -1, cs.GetBufferSetLength(wlen), wlen);
-            cs.ReleaseBuffer();
-            columns.push_back(cs);
-            pos = end + 1;
-        }
-
-        CString headerLine;
-        for (size_t i = 0; i < columns.size(); ++i)
-        {
-            if (i > 0) headerLine += _T(",");
-            headerLine += columns[i];
-        }
-        file.WriteString(headerLine + _T("\n"));
-
-        size_t rowsStart    = json.find("\"rows\"");
-        size_t rowsArrStart = json.find('[', rowsStart);
-        size_t searchPos    = rowsArrStart + 1;
-        while ((searchPos = json.find('[', searchPos)) != std::string::npos)
-        {
-            size_t rowEnd = json.find(']', searchPos);
-            if (rowEnd == std::string::npos) break;
-            std::string rowStr = json.substr(searchPos + 1, rowEnd - searchPos - 1);
-
-            CString rowLine;
-            size_t vpos = 0;
-            bool first = true;
-            while ((vpos = rowStr.find('"', vpos)) != std::string::npos)
-            {
-                size_t vend = rowStr.find('"', vpos + 1);
-                if (vend == std::string::npos) break;
-                std::string val = rowStr.substr(vpos + 1, vend - vpos - 1);
-                int wlen = MultiByteToWideChar(CP_UTF8, 0, val.c_str(), -1, nullptr, 0);
-                CString cs;
-                MultiByteToWideChar(CP_UTF8, 0, val.c_str(), -1, cs.GetBufferSetLength(wlen), wlen);
-                cs.ReleaseBuffer();
-                if (!first) rowLine += _T(",");
-                rowLine += cs;
-                first = false;
-                vpos = vend + 1;
-            }
-            file.WriteString(rowLine + _T("\n"));
-            searchPos = rowEnd + 1;
-        }
-    }
-    else if (isChartFormat)
-    {
-        // labels/datasets 형식 → CSV
-        size_t labStart    = json.find("\"labels\"");
-        size_t labArrStart = json.find('[', labStart);
-        size_t labArrEnd   = json.find(']', labArrStart);
-        std::string labArr = json.substr(labArrStart + 1, labArrEnd - labArrStart - 1);
-
-        std::vector<std::string> labels;
-        size_t lp = 0;
-        while ((lp = labArr.find('"', lp)) != std::string::npos)
-        {
-            size_t le = labArr.find('"', lp + 1);
-            if (le == std::string::npos) break;
-            labels.push_back(labArr.substr(lp + 1, le - lp - 1));
-            lp = le + 1;
-        }
-
-        std::vector<std::string> dsNames;
-        std::vector<std::vector<std::string>> dsValues;
-
-        size_t dsStart     = json.find("\"datasets\"");
-        size_t dsArrStart  = json.find('[', dsStart);
-        size_t dsSearchPos = dsArrStart + 1;
-
-        while (true)
-        {
-            size_t namePos = json.find("\"name\"", dsSearchPos);
-            if (namePos == std::string::npos) break;
-
-            size_t ns = json.find('"', namePos + 6);
-            size_t ne = json.find('"', ns + 1);
-            dsNames.push_back(json.substr(ns + 1, ne - ns - 1));
-
-            size_t valPos  = json.find("\"values\"", ne);
-            size_t valArrS = json.find('[', valPos);
-            size_t valArrE = json.find(']', valArrS);
-            std::string valStr = json.substr(valArrS + 1, valArrE - valArrS - 1);
-
-            std::vector<std::string> vals;
-            std::istringstream vss(valStr);
-            std::string token;
-            while (std::getline(vss, token, ','))
-            {
-                size_t s  = token.find_first_not_of(" \t\r\n");
-                size_t e2 = token.find_last_not_of(" \t\r\n");
-                if (s != std::string::npos)
-                    vals.push_back(token.substr(s, e2 - s + 1));
-            }
-            dsValues.push_back(vals);
-            dsSearchPos = valArrE + 1;
-        }
-
-        // 헤더 행
-        CString headerLine;
-        for (size_t i = 0; i < dsNames.size(); ++i)
-        {
-            headerLine += _T(",");
-            int wl = MultiByteToWideChar(CP_UTF8, 0, dsNames[i].c_str(), -1, nullptr, 0);
-            CString nm;
-            MultiByteToWideChar(CP_UTF8, 0, dsNames[i].c_str(), -1, nm.GetBufferSetLength(wl), wl);
-            nm.ReleaseBuffer();
-            headerLine += nm;
-        }
-        file.WriteString(headerLine + _T("\n"));
-
-        // 데이터 행
-        for (size_t r = 0; r < labels.size(); ++r)
-        {
-            int wl = MultiByteToWideChar(CP_UTF8, 0, labels[r].c_str(), -1, nullptr, 0);
-            CString lb;
-            MultiByteToWideChar(CP_UTF8, 0, labels[r].c_str(), -1, lb.GetBufferSetLength(wl), wl);
-            lb.ReleaseBuffer();
-            CString line = lb;
-            for (size_t d = 0; d < dsValues.size(); ++d)
-            {
-                line += _T(",");
-                if (r < dsValues[d].size())
-                {
-                    int wl2 = MultiByteToWideChar(CP_UTF8, 0, dsValues[d][r].c_str(), -1, nullptr, 0);
-                    CString v;
-                    MultiByteToWideChar(CP_UTF8, 0, dsValues[d][r].c_str(), -1, v.GetBufferSetLength(wl2), wl2);
-                    v.ReleaseBuffer();
-                    line += v;
-                }
-            }
-            file.WriteString(line + _T("\n"));
-        }
-    }
-    else
-    {
-        // 알 수 없는 형식 — 제목 + raw data 출력
+    if (!isTableFormat && !isChartFormat)
         file.WriteString(m_vizInfo.title + _T("\n"));
-        file.WriteString(dataJson + _T("\n"));
-    }
+
+    file.WriteString(ExportFormatter::BuildCsvFromDataJson(dataJson));
 
     file.Close();
     return TRUE;
+}
+
+// ============================================================
+// 임시 PNG 렌더링 (HTML/PDF 내보내기용 공통 헬퍼)
+// ============================================================
+CString CExportDialog::RenderChartToTempPng(int width, int height) const
+{
+    if (width <= 0 || height <= 0)
+        return CString();
+
+    TCHAR tempDir[MAX_PATH] = {};
+    if (::GetTempPath(MAX_PATH, tempDir) == 0)
+        return CString();
+
+    TCHAR tempFile[MAX_PATH] = {};
+    if (::GetTempFileName(tempDir, _T("dmx"), 0, tempFile) == 0)
+        return CString();
+
+    // GetTempFileName은 .tmp 파일을 만든다 → .png 확장자로 교체
+    CString pngPath(tempFile);
+    ::DeleteFile(pngPath);
+    int dot = pngPath.ReverseFind(_T('.'));
+    if (dot >= 0)
+        pngPath = pngPath.Left(dot);
+    pngPath += _T(".png");
+
+    CChartRenderer::RenderToFile(pngPath, width, height, m_vizInfo.chartConfig);
+    if (::GetFileAttributes(pngPath) == INVALID_FILE_ATTRIBUTES)
+        return CString();
+
+    return pngPath;
+}
+
+// ============================================================
+// dataJson → HTML <table> 변환
+// columns/rows 형식과 labels/datasets 형식을 모두 지원
+// ============================================================
+CString CExportDialog::BuildHtmlTable() const
+{
+    // 순수 문자열 빌딩은 ExportFormatter(헤더 전용, 단위 테스트 대상)에 위임한다.
+    return ExportFormatter::BuildHtmlTableFromDataJson(m_vizInfo.chartConfig.dataJson);
+}
+
+// ============================================================
+// HTML 내보내기 — 차트 이미지(base64 data URI) + 데이터 표를
+// 담은 자체완결형 .html 파일 생성
+// ============================================================
+BOOL CExportDialog::ExportAsHtml(const CString& path, int width, int height)
+{
+    if (width <= 0 || height <= 0)
+        return FALSE;
+
+    // 1) 차트를 임시 PNG로 렌더링
+    CString tempPng = RenderChartToTempPng(width, height);
+    if (tempPng.IsEmpty())
+        return FALSE;
+
+    // 2) PNG 바이트 읽기
+    CFile imgFile;
+    if (!imgFile.Open(tempPng, CFile::modeRead | CFile::typeBinary))
+    {
+        ::DeleteFile(tempPng);
+        return FALSE;
+    }
+    ULONGLONG len64 = imgFile.GetLength();
+    DWORD pngLen = static_cast<DWORD>(len64);
+    std::vector<BYTE> pngBytes(pngLen);
+    if (pngLen > 0)
+        imgFile.Read(pngBytes.data(), pngLen);
+    imgFile.Close();
+    ::DeleteFile(tempPng);
+
+    if (pngLen == 0)
+        return FALSE;
+
+    // 3) base64 인코딩 (data URI용)
+    DWORD b64Len = 0;
+    ::CryptBinaryToString(pngBytes.data(), pngLen,
+                          CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF,
+                          nullptr, &b64Len);
+    if (b64Len == 0)
+        return FALSE;
+
+    CString base64;
+    ::CryptBinaryToString(pngBytes.data(), pngLen,
+                          CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF,
+                          base64.GetBuffer(b64Len), &b64Len);
+    base64.ReleaseBuffer();
+
+    // 4) HTML 본문 구성 (UTF-8로 저장)
+    CString title = m_vizInfo.title;
+    title.Replace(_T("<"), _T("&lt;"));
+    title.Replace(_T(">"), _T("&gt;"));
+
+    CString htmlTable = BuildHtmlTable();
+
+    CString html;
+    html += _T("<!DOCTYPE html>\n");
+    html += _T("<html lang=\"ko\">\n<head>\n");
+    html += _T("  <meta charset=\"UTF-8\">\n");
+    html += _T("  <title>") + title + _T("</title>\n");
+    html += _T("  <style>\n");
+    html += _T("    body { font-family: 'Malgun Gothic', sans-serif; margin: 24px; color: #222; }\n");
+    html += _T("    h1 { font-size: 20px; }\n");
+    html += _T("    img { max-width: 100%; height: auto; border: 1px solid #ddd; }\n");
+    html += _T("    table { border-collapse: collapse; margin-top: 16px; }\n");
+    html += _T("    th, td { border: 1px solid #ccc; padding: 4px 10px; text-align: left; }\n");
+    html += _T("    th { background: #f2f2f2; }\n");
+    html += _T("  </style>\n</head>\n<body>\n");
+    html += _T("  <h1>") + title + _T("</h1>\n");
+    html += _T("  <img src=\"data:image/png;base64,") + base64 + _T("\" alt=\"chart\">\n");
+    html += htmlTable;
+    html += _T("</body>\n</html>\n");
+
+    // 5) UTF-8 파일로 저장
+    CFile out;
+    if (!out.Open(path, CFile::modeCreate | CFile::modeWrite | CFile::typeBinary))
+        return FALSE;
+
+    CT2A utf8Html(html, CP_UTF8);
+    int byteLen = static_cast<int>(strlen(static_cast<const char*>(utf8Html)));
+
+    // UTF-8 BOM
+    static const BYTE bom[3] = { 0xEF, 0xBB, 0xBF };
+    out.Write(bom, 3);
+    out.Write(static_cast<const char*>(utf8Html), byteLen);
+    out.Close();
+
+    return (GetFileAttributes(path) != INVALID_FILE_ATTRIBUTES);
+}
+
+// ============================================================
+// PDF 내보내기 — 차트 이미지를 임베드한 단일 페이지 PDF 생성
+// (벤더링된 공용 도메인 PDFGen 라이브러리 사용)
+//
+// 한글 제한: PDFGen 코어 폰트(Helvetica 등)는 라틴 문자만 지원하므로
+// 제목은 ASCII("DeepMetria Chart Export")로 표기한다. 한글 제목은
+// 깨지므로 사용하지 않으며, 한글 데이터는 차트 이미지로만 표현된다.
+// ============================================================
+BOOL CExportDialog::ExportAsPdf(const CString& path, int width, int height)
+{
+    if (width <= 0 || height <= 0)
+        return FALSE;
+
+    // 1) 차트를 임시 PNG로 렌더링
+    CString tempPng = RenderChartToTempPng(width, height);
+    if (tempPng.IsEmpty())
+        return FALSE;
+
+    // PDFGen API는 char* (ANSI/UTF-8) 경로를 받는다 → 변환
+    CT2A pngPathA(tempPng);
+    CT2A outPathA(path);
+
+    // 2) PDF 문서 생성 (A4)
+    struct pdf_info info;
+    memset(&info, 0, sizeof(info));
+    strncpy_s(info.creator,  sizeof(info.creator),  "DeepMetria",        _TRUNCATE);
+    strncpy_s(info.producer, sizeof(info.producer), "DeepMetria PDFGen", _TRUNCATE);
+    strncpy_s(info.title,    sizeof(info.title),    "DeepMetria Chart",  _TRUNCATE);
+
+    struct pdf_doc* pdf = pdf_create(PDF_A4_WIDTH, PDF_A4_HEIGHT, &info);
+    if (!pdf)
+    {
+        ::DeleteFile(tempPng);
+        return FALSE;
+    }
+
+    pdf_set_font(pdf, "Helvetica-Bold");
+    pdf_append_page(pdf);
+
+    float pageW = pdf_width(pdf);
+    float pageH = pdf_height(pdf);
+
+    // 3) 제목 (ASCII만 — 한글 폰트 미지원)
+    pdf_add_text(pdf, NULL, "DeepMetria Chart Export", 16.0f,
+                 40.0f, pageH - 50.0f, PDF_BLACK);
+
+    // 4) 차트 이미지 임베드 — 페이지 폭에 맞춰 비율 유지(높이 음수)
+    float margin   = 40.0f;
+    float imgWidth = pageW - margin * 2.0f;
+    float imgY     = pageH - 70.0f - (imgWidth * (float)height / (float)width);
+    if (imgY < margin)
+        imgY = margin;
+
+    pdf_add_image_file(pdf, NULL, margin, imgY, imgWidth, -1.0f,
+                       static_cast<const char*>(pngPathA));
+
+    // 5) 저장 및 정리
+    int rc = pdf_save(pdf, static_cast<const char*>(outPathA));
+    pdf_destroy(pdf);
+    ::DeleteFile(tempPng);
+
+    if (rc < 0)
+        return FALSE;
+
+    return (GetFileAttributes(path) != INVALID_FILE_ATTRIBUTES);
 }
 
 CString CExportDialog::GetSelectedFormat() const

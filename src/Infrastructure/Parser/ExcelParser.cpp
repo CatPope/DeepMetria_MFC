@@ -43,13 +43,15 @@ DataTable ExcelParser::Parse(const CString& filePath, AppError& outError) {
         auto wb    = doc.workbook();
         auto sheet = wb.worksheet(wb.sheetNames().front()); // 첫 번째 시트
 
-        auto range = sheet.range();
+        // XLCellRange는 셀 단위 평면 반복자이므로, 행 단위로 순회하려면
+        // XLWorksheet::rows() (행 범위) → XLRow::cells() (행 내 셀) 를 사용한다.
+        auto rows = sheet.rows();
         bool isFirstRow = true;
 
-        for (auto& rowRange : range) {
+        for (auto& rowRange : rows) {
             if (isFirstRow) {
                 // 헤더 행
-                for (auto& cell : rowRange) {
+                for (auto& cell : rowRange.cells()) {
                     std::string val = cell.value().get<std::string>();
                     result.headers.push_back(UTF8ToCString(val));
                 }
@@ -58,7 +60,7 @@ DataTable ExcelParser::Parse(const CString& filePath, AppError& outError) {
             } else {
                 DataRow row;
                 row.reserve(result.colCount);
-                for (auto& cell : rowRange) {
+                for (auto& cell : rowRange.cells()) {
                     CString cellVal;
                     auto cellType = cell.value().type();
                     switch (cellType) {

@@ -49,8 +49,8 @@
       <PrecompiledHeaderFile>stdafx.h</PrecompiledHeaderFile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_WINDOWS;_UNICODE;UNICODE;_AFXDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;_UNICODE;UNICODE;_AFXDLL;HAVE_OPENXLSX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;C:\vcpkg\installed\x64-windows\include;C:\vcpkg\installed\x64-windows\include\OpenXLSX;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
@@ -58,8 +58,15 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>gdiplus.lib;crypt32.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\vcpkg\installed\x64-windows\debug\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>gdiplus.lib;crypt32.lib;shlwapi.lib;OpenXLSXd.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>copy /Y "C:\vcpkg\installed\x64-windows\debug\bin\OpenXLSXd.dll" "$(OutDir)"
+copy /Y "C:\vcpkg\installed\x64-windows\debug\bin\nowide.dll" "$(OutDir)"
+copy /Y "C:\vcpkg\installed\x64-windows\debug\bin\pugixml.dll" "$(OutDir)"</Command>
+      <Message>Copying OpenXLSX runtime DLLs (Debug) to output directory</Message>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -67,8 +74,8 @@
       <PrecompiledHeaderFile>stdafx.h</PrecompiledHeaderFile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_WINDOWS;_UNICODE;UNICODE;_AFXDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;_UNICODE;UNICODE;_AFXDLL;HAVE_OPENXLSX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;C:\vcpkg\installed\x64-windows\include;C:\vcpkg\installed\x64-windows\include\OpenXLSX;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -80,8 +87,15 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>gdiplus.lib;crypt32.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\vcpkg\installed\x64-windows\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>gdiplus.lib;crypt32.lib;shlwapi.lib;OpenXLSX.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>copy /Y "C:\vcpkg\installed\x64-windows\bin\OpenXLSX.dll" "$(OutDir)"
+copy /Y "C:\vcpkg\installed\x64-windows\bin\nowide.dll" "$(OutDir)"
+copy /Y "C:\vcpkg\installed\x64-windows\bin\pugixml.dll" "$(OutDir)"</Command>
+      <Message>Copying OpenXLSX runtime DLLs (Release) to output directory</Message>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
 
   <!-- Precompiled Header -->
@@ -110,6 +124,10 @@
     <ClCompile Include="src\Domain\Orchestrator\AnalysisOrchestrator.cpp" />
     <ClCompile Include="src\Infrastructure\Cache\AnalysisCache.cpp" />
     <ClCompile Include="src\Infrastructure\CrashRecovery\CrashRecoveryManager.cpp" />
+    <ClCompile Include="src\Infrastructure\Export\pdfgen.c">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="src\Infrastructure\LLM\ClaudeProvider.cpp" />
     <ClCompile Include="src\Infrastructure\LLM\GeminiProvider.cpp" />
     <ClCompile Include="src\Infrastructure\LLM\HttpClient.cpp" />
@@ -154,6 +172,7 @@
     <ClInclude Include="src\Domain\Orchestrator\AnalysisOrchestrator.h" />
     <ClInclude Include="src\Infrastructure\Cache\AnalysisCache.h" />
     <ClInclude Include="src\Infrastructure\CrashRecovery\CrashRecoveryManager.h" />
+    <ClInclude Include="src\Infrastructure\Export\pdfgen.h" />
     <ClInclude Include="src\Infrastructure\LLM\ClaudeProvider.h" />
     <ClInclude Include="src\Infrastructure\LLM\GeminiProvider.h" />
     <ClInclude Include="src\Infrastructure\LLM\HttpClient.h" />

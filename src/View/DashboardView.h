@@ -87,4 +87,8 @@ private:
     // 툴팁
     CToolTipCtrl m_toolTip;
     int          m_nHoverCard;  // 현재 호버 중인 카드 인덱스
+
+    // 빈 상태 안내 라벨 (DI-12) — 시각화가 없을 때만 표시
+    CStatic m_emptyGuide;
+    void    UpdateEmptyGuide();
 };
