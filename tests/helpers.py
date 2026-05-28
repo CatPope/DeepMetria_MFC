@@ -56,22 +56,38 @@ def get_main_window(app):
 # 스크린샷
 # ---------------------------------------------------------------------------
 
+_run_screenshot_dir = None
+_run_temp_dir = None
+
+
 def _ensure_dirs():
-    os.makedirs(SCREENSHOT_DIR, exist_ok=True)
-    os.makedirs(CLAUDE_TEMP_DIR, exist_ok=True)
+    global _run_screenshot_dir, _run_temp_dir
+    if _run_screenshot_dir is None:
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_name = f"run_{ts}"
+        _run_screenshot_dir = os.path.join(SCREENSHOT_DIR, run_name)
+        _run_temp_dir = os.path.join(CLAUDE_TEMP_DIR, run_name)
+    os.makedirs(_run_screenshot_dir, exist_ok=True)
+    os.makedirs(_run_temp_dir, exist_ok=True)
+
+
+def get_run_screenshot_dir() -> str:
+    """현재 실행의 스크린샷 폴더 경로를 반환한다."""
+    _ensure_dirs()
+    return _run_screenshot_dir
 
 
 def capture(win, test_id: str, description: str) -> str:
     """
     윈도우 전체 스크린샷을 캡처한다.
-    SCREENSHOT_DIR 과 CLAUDE_TEMP_DIR 양쪽에 저장하고 경로를 반환한다.
+    실행별 하위 폴더에 저장하고 경로를 반환한다.
     """
     _ensure_dirs()
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.datetime.now().strftime("%H%M%S")
     filename = f"{test_id}_{description}_{ts}.png"
 
-    main_path = os.path.join(SCREENSHOT_DIR, filename)
-    temp_path = os.path.join(CLAUDE_TEMP_DIR, filename)
+    main_path = os.path.join(_run_screenshot_dir, filename)
+    temp_path = os.path.join(_run_temp_dir, filename)
 
     try:
         img = win.capture_as_image()
@@ -87,11 +103,11 @@ def capture(win, test_id: str, description: str) -> str:
 def capture_control(control, test_id: str, description: str) -> str:
     """특정 컨트롤의 스크린샷을 캡처한다."""
     _ensure_dirs()
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.datetime.now().strftime("%H%M%S")
     filename = f"{test_id}_{description}_ctrl_{ts}.png"
 
-    main_path = os.path.join(SCREENSHOT_DIR, filename)
-    temp_path = os.path.join(CLAUDE_TEMP_DIR, filename)
+    main_path = os.path.join(_run_screenshot_dir, filename)
+    temp_path = os.path.join(_run_temp_dir, filename)
 
     try:
         img = control.capture_as_image()
@@ -224,6 +240,32 @@ def get_listview_columns(win) -> list:
 # ---------------------------------------------------------------------------
 # 설정 대화상자
 # ---------------------------------------------------------------------------
+
+def dismiss_dialog(app) -> str:
+    """
+    열린 대화상자(#32770)가 있으면 텍스트를 읽고 Enter 로 닫는다.
+    찾은 텍스트를 반환한다. 대화상자가 없으면 빈 문자열을 반환한다.
+    """
+    try:
+        dlg = app.window(class_name="#32770")
+        dlg.wait("visible", timeout=3)
+        text = ""
+        for idx in range(5):
+            try:
+                static = dlg.child_window(class_name="Static", found_index=idx)
+                t = static.window_text()
+                if t:
+                    text = t
+                    break
+            except Exception:
+                break
+        if not text:
+            text = dlg.window_text()
+        dlg.type_keys("{ENTER}")
+        return text
+    except Exception:
+        return ""
+
 
 def open_settings(app, win):
     """Tools > Settings 메뉴를 통해 설정 대화상자를 연다."""

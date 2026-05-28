@@ -118,13 +118,13 @@ def analyze_results() -> dict:
         }
 
     tests = {}
-    summary = {"total": 0, "passed": 0, "failed": 0, "manual": 0}
+    summary = {"total": 0, "passed": 0, "failed": 0, "manual": 0, "skipped": 0}
     failed_ids = []
 
     with open(RESULTS_FILE, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            match = re.match(r"^(\S+)\s+(PASS|FAIL|MANUAL)$", line)
+            match = re.match(r"^(\S+)\s+(PASS|FAIL|MANUAL|SKIP)$", line)
             if match:
                 tid, result = match.groups()
                 tests[tid] = result
@@ -136,13 +136,16 @@ def analyze_results() -> dict:
                     failed_ids.append(tid)
                 elif result == "MANUAL":
                     summary["manual"] += 1
+                elif result == "SKIP":
+                    summary["skipped"] += 1
 
     auto_total = summary["passed"] + summary["failed"]
     pass_rate = (summary["passed"] / auto_total * 100) if auto_total > 0 else 0
     complete = summary["failed"] == 0 and auto_total > 0
 
     print(f"  전체: {summary['total']}  PASS: {summary['passed']}  "
-          f"FAIL: {summary['failed']}  MANUAL: {summary['manual']}")
+          f"FAIL: {summary['failed']}  SKIP: {summary['skipped']}  "
+          f"MANUAL: {summary['manual']}")
     print(f"  자동 테스트 통과율: {pass_rate:.0f}%")
     if failed_ids:
         print(f"  실패 항목: {', '.join(failed_ids)}")
@@ -233,7 +236,8 @@ def main():
     parser.add_argument("--config", default="Debug", choices=["Debug", "Release"],
                         help="빌드 구성 (기본: Debug)")
     parser.add_argument("--suite", default=None,
-                        choices=["layout", "file_load", "query_input", "data_summary"],
+                        choices=["layout", "file_load", "query_input", "data_summary",
+                                 "json_load", "export", "dashboard", "format_editor"],
                         help="특정 테스트 스위트만 실행")
     parser.add_argument("--max-loops", type=int, default=1,
                         help="최대 반복 횟수 (기본: 1)")

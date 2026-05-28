@@ -44,6 +44,9 @@ public:
     // 대시보드 삭제
     BOOL RemoveDashboard(const CString& dashboardId, AppError& outError);
 
+    // 데이터 요약 기반 자동 대시보드 구성
+    BOOL AutoConfigLayout(const DataSummary& summary, DashboardDetail& outDashboard, AppError& outError);
+
 private:
     // 레이아웃 벡터를 JSON 문자열로 직렬화
     static CString SerializeLayout(const std::vector<LayoutItem>& layout);

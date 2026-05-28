@@ -132,3 +132,45 @@ LONGLONG DataSourceService::GetFileSize(const CString& filePath)
     li.LowPart  = fad.nFileSizeLow;
     return li.QuadPart;
 }
+
+// ============================================================
+// GetSchema — DataTable에서 ColumnSchema 벡터 추출
+// ============================================================
+
+std::vector<ColumnSchema> DataSourceService::GetSchema(const DataTable& data)
+{
+    std::vector<ColumnSchema> schema;
+    schema.reserve(data.columns.size());
+
+    for (int i = 0; i < (int)data.columns.size(); ++i) {
+        const DataColumn& col = data.columns[i];
+
+        ColumnSchema cs;
+        cs.name  = col.name;
+        cs.type  = col.type.IsEmpty() ? _T("text") : col.type;
+        cs.index = i;
+
+        // null(빈 문자열) 개수 집계 및 샘플 값 수집
+        int nullCount = 0;
+        int sampleCount = 0;
+        CString samples;
+
+        for (const CString& val : col.values) {
+            if (val.IsEmpty()) {
+                ++nullCount;
+            } else if (sampleCount < 3) {
+                if (sampleCount > 0)
+                    samples += _T(",");
+                samples += val;
+                ++sampleCount;
+            }
+        }
+
+        cs.nullCount    = nullCount;
+        cs.sampleValues = samples;
+
+        schema.push_back(cs);
+    }
+
+    return schema;
+}

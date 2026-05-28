@@ -95,8 +95,10 @@
   <ItemGroup>
     <ClCompile Include="src\App\DeepMetriaApp.cpp" />
     <ClCompile Include="src\App\MainFrm.cpp" />
+    <ClCompile Include="src\Dialog\DownloadDlg.cpp" />
     <ClCompile Include="src\Dialog\ExportDialog.cpp" />
     <ClCompile Include="src\Dialog\FileOpenDialog.cpp" />
+    <ClCompile Include="src\Dialog\FormatEditorDlg.cpp" />
     <ClCompile Include="src\Dialog\SettingsDialog.cpp" />
     <ClCompile Include="src\Document\DeepMetriaDoc.cpp" />
     <ClCompile Include="src\Domain\Analysis\AnalysisTools.cpp" />
@@ -134,10 +136,13 @@
     <ClInclude Include="src\stdafx.h" />
     <ClInclude Include="src\App\DeepMetriaApp.h" />
     <ClInclude Include="src\App\MainFrm.h" />
+    <ClInclude Include="src\Common\Exceptions.h" />
     <ClInclude Include="src\Common\StringUtils.h" />
     <ClInclude Include="src\Common\Types.h" />
+    <ClInclude Include="src\Dialog\DownloadDlg.h" />
     <ClInclude Include="src\Dialog\ExportDialog.h" />
     <ClInclude Include="src\Dialog\FileOpenDialog.h" />
+    <ClInclude Include="src\Dialog\FormatEditorDlg.h" />
     <ClInclude Include="src\Dialog\SettingsDialog.h" />
     <ClInclude Include="src\Document\DeepMetriaDoc.h" />
     <ClInclude Include="src\Domain\Analysis\AnalysisTools.h" />

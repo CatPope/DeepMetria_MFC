@@ -192,6 +192,43 @@ BEGIN
 END
 
 // ============================================================
+// FormatEditor 다이얼로그 (IDD_FORMAT_EDITOR)
+// ============================================================
+IDD_FORMAT_EDITOR DIALOGEX 0, 0, 300, 200
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "서식 편집"
+FONT 9, "MS Shell Dlg 2", 400, 0, 0x1
+BEGIN
+    LTEXT           "차트 유형:",    IDC_STATIC,            10, 14, 45, 8
+    COMBOBOX        IDC_COMBO_CHART_TYPE,                    60, 12, 100, 80,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+
+    LTEXT           "너비:",         IDC_STATIC,            10, 38, 30, 8
+    CONTROL         "",              IDC_SLIDER_WIDTH,      "msctls_trackbar32",
+                    TBS_AUTOTICKS | WS_TABSTOP, 45, 36, 170, 15
+    EDITTEXT        IDC_EDIT_FMT_WIDTH,                     220, 37, 40, 14,
+                    ES_AUTOHSCROLL | ES_NUMBER | ES_READONLY
+
+    LTEXT           "높이:",         IDC_STATIC,            10, 60, 30, 8
+    CONTROL         "",              IDC_SLIDER_HEIGHT,     "msctls_trackbar32",
+                    TBS_AUTOTICKS | WS_TABSTOP, 45, 58, 170, 15
+    EDITTEXT        IDC_EDIT_FMT_HEIGHT,                    220, 59, 40, 14,
+                    ES_AUTOHSCROLL | ES_NUMBER | ES_READONLY
+
+    LTEXT           "색상:",         IDC_STATIC,            10, 84, 30, 8
+    PUSHBUTTON      "색상 선택...",  IDC_BTN_COLOR,          45, 82, 70, 16
+    CTEXT           "",              IDC_STATIC_COLOR_PREVIEW, 125, 82, 30, 16,
+                    SS_SUNKEN
+
+    GROUPBOX        "미리보기",      IDC_STATIC,            10, 105, 280, 55
+    CTEXT           "",              IDC_STATIC_PREVIEW,    20, 118, 260, 35,
+                    SS_SUNKEN
+
+    DEFPUSHBUTTON   "적용",          IDC_BTN_APPLY,        130, 172, 60, 16
+    PUSHBUTTON      "취소",          IDC_BTN_FMT_CANCEL,   200, 172, 60, 16
+END
+
+// ============================================================
 // 문자열 테이블
 // ============================================================
 STRINGTABLE

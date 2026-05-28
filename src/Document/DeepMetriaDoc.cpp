@@ -4,6 +4,8 @@
 #include "stdafx.h"
 #include "DeepMetriaDoc.h"
 #include "../Infrastructure/Parser/CSVParser.h"
+#include "../Infrastructure/Parser/ExcelParser.h"
+#include "../Infrastructure/Parser/JsonParser.h"
 
 // ============================================================
 // IMPLEMENT_DYNCREATE
@@ -72,7 +74,7 @@ BOOL CDeepMetriaDoc::LoadFile(const CString& filePath, AppError& outError)
     ext.MakeLower();
 
     // 파일 형식 확인
-    if (ext != _T("csv") && ext != _T("xlsx") && ext != _T("xls"))
+    if (ext != _T("csv") && ext != _T("xlsx") && ext != _T("xls") && ext != _T("json"))
     {
         outError = AppError(_T("UNSUPPORTED_FILE_TYPE"),
                             _T("지원하지 않는 파일 형식입니다: .") + ext, 2);
@@ -86,12 +88,17 @@ BOOL CDeepMetriaDoc::LoadFile(const CString& filePath, AppError& outError)
         if (m_dataTable.headers.empty() && outError.IsError())
             return FALSE;
     }
-    else
+    else if (ext == _T("xlsx") || ext == _T("xls"))
     {
-        // XLSX: 미구현 — 스켈레톤
-        m_dataTable          = DataTable();
-        m_dataTable.fileName = filePath;
-        m_dataTable.rowCount = 0;
+        m_dataTable = ExcelParser::Parse(filePath, outError);
+        if (m_dataTable.headers.empty() && outError.IsError())
+            return FALSE;
+    }
+    else if (ext == _T("json"))
+    {
+        m_dataTable = JsonParser::Parse(filePath, outError);
+        if (m_dataTable.headers.empty() && outError.IsError())
+            return FALSE;
     }
 
     m_dataTable.fileName = filePath;
@@ -200,20 +207,145 @@ void CDeepMetriaDoc::ClearVisualizations()
 }
 
 // ============================================================
-// Serialize — 직렬화 (현재 스켈레톤: 기본 구현만 유지)
+// Serialize — 직렬화 (DataTable + DataSummary + Visualizations)
 // ============================================================
 void CDeepMetriaDoc::Serialize(CArchive& ar)
 {
     if (ar.IsStoring())
     {
-        // 저장: 추후 구현
+        // 기본 정보
         ar << m_dataTable.fileName;
         ar << m_dataTable.rowCount;
+        ar << m_dataTable.colCount;
+
+        // 헤더
+        ar << (int)m_dataTable.headers.size();
+        for (const auto& h : m_dataTable.headers)
+            ar << h;
+
+        // 행 데이터
+        ar << (int)m_dataTable.rows.size();
+        for (const auto& row : m_dataTable.rows)
+        {
+            ar << (int)row.size();
+            for (const auto& cell : row)
+                ar << cell;
+        }
+
+        // DataSummary
+        ar << m_dataSummary.datasourceId;
+        ar << m_dataSummary.rowCount;
+        ar << m_dataSummary.columnCount;
+        ar << (int)m_dataSummary.schema.size();
+        for (const auto& cs : m_dataSummary.schema)
+        {
+            ar << cs.name;
+            ar << cs.type;
+            ar << cs.index;
+            ar << cs.nullCount;
+            ar << cs.sampleValues;
+        }
+
+        // Visualizations
+        ar << (int)m_visualizations.size();
+        for (const auto& viz : m_visualizations)
+        {
+            ar << viz.id;
+            ar << viz.dashboardId;
+            ar << viz.vizType;
+            ar << viz.title;
+            ar << viz.chartConfig.dataJson;
+            ar << viz.position.x;
+            ar << viz.position.y;
+            ar << viz.position.w;
+            ar << viz.position.h;
+        }
     }
     else
     {
-        // 불러오기: 추후 구현
+        // 역직렬화 — 저장 순서와 동일하게
+        DeleteContents();
+
         ar >> m_dataTable.fileName;
         ar >> m_dataTable.rowCount;
+        ar >> m_dataTable.colCount;
+
+        int headerCount = 0;
+        ar >> headerCount;
+        m_dataTable.headers.resize(headerCount);
+        for (int i = 0; i < headerCount; ++i)
+            ar >> m_dataTable.headers[i];
+
+        int rowCountActual = 0;
+        ar >> rowCountActual;
+        m_dataTable.rows.resize(rowCountActual);
+        for (int i = 0; i < rowCountActual; ++i)
+        {
+            int cellCount = 0;
+            ar >> cellCount;
+            m_dataTable.rows[i].resize(cellCount);
+            for (int j = 0; j < cellCount; ++j)
+                ar >> m_dataTable.rows[i][j];
+        }
+
+        ar >> m_dataSummary.datasourceId;
+        ar >> m_dataSummary.rowCount;
+        ar >> m_dataSummary.columnCount;
+        int schemaCount = 0;
+        ar >> schemaCount;
+        m_dataSummary.schema.resize(schemaCount);
+        for (int i = 0; i < schemaCount; ++i)
+        {
+            ar >> m_dataSummary.schema[i].name;
+            ar >> m_dataSummary.schema[i].type;
+            ar >> m_dataSummary.schema[i].index;
+            ar >> m_dataSummary.schema[i].nullCount;
+            ar >> m_dataSummary.schema[i].sampleValues;
+        }
+
+        int vizCount = 0;
+        ar >> vizCount;
+        m_visualizations.resize(vizCount);
+        for (int i = 0; i < vizCount; ++i)
+        {
+            ar >> m_visualizations[i].id;
+            ar >> m_visualizations[i].dashboardId;
+            ar >> m_visualizations[i].vizType;
+            ar >> m_visualizations[i].title;
+            ar >> m_visualizations[i].chartConfig.dataJson;
+            ar >> m_visualizations[i].position.x;
+            ar >> m_visualizations[i].position.y;
+            ar >> m_visualizations[i].position.w;
+            ar >> m_visualizations[i].position.h;
+        }
+
+        // columns 필드 재구성
+        m_dataTable.columns.clear();
+        for (int c = 0; c < m_dataTable.colCount; ++c)
+        {
+            DataColumn dc;
+            dc.name = (c < (int)m_dataTable.headers.size()) ? m_dataTable.headers[c] : _T("");
+            for (const auto& row : m_dataTable.rows)
+            {
+                if (c < (int)row.size())
+                    dc.values.push_back(row[c]);
+                else
+                    dc.values.push_back(_T(""));
+            }
+            bool allNumeric = true;
+            for (const auto& v : dc.values)
+            {
+                if (v.IsEmpty()) continue;
+                TCHAR* endPtr = nullptr;
+                _tcstod(v, &endPtr);
+                if (endPtr == (LPCTSTR)v || *endPtr != _T('\0'))
+                {
+                    allNumeric = false;
+                    break;
+                }
+            }
+            dc.type = allNumeric ? _T("numeric") : _T("text");
+            m_dataTable.columns.push_back(dc);
+        }
     }
 }

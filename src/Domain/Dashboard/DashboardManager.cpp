@@ -348,6 +348,74 @@ BOOL DashboardManager::DeserializeLayout(const CString&          json,
     return TRUE;
 }
 
+// ============================================================
+// AutoConfigLayout — 데이터 요약 기반 자동 대시보드 구성
+// ============================================================
+
+BOOL DashboardManager::AutoConfigLayout(const DataSummary& summary,
+                                         DashboardDetail&   outDashboard,
+                                         AppError&          outError)
+{
+    (void)outError;
+
+    outDashboard.visualizations.clear();
+    outDashboard.layout.clear();
+
+    int gridX = 0;
+    int gridY = 0;
+
+    for (const auto& col : summary.schema) {
+        VisualizationInfo viz;
+
+        // 고유 ID 생성 (컬럼 인덱스 기반)
+        CString vizId;
+        vizId.Format(_T("auto_viz_%d"), col.index);
+        viz.id          = vizId;
+        viz.dashboardId = summary.datasourceId;
+        viz.title       = col.name;
+
+        // 컬럼 타입에 따라 차트 타입 결정
+        if (col.type == _T("date")) {
+            viz.vizType              = _T("line_chart");
+            viz.chartConfig.chartType = _T("line");
+        } else if (col.type == _T("numeric")) {
+            viz.vizType              = _T("bar_chart");
+            viz.chartConfig.chartType = _T("bar");
+        } else {
+            // text — 범주형: 파이 차트
+            viz.vizType              = _T("pie_chart");
+            viz.chartConfig.chartType = _T("pie");
+        }
+
+        viz.chartConfig.title  = col.name;
+        viz.chartConfig.xLabel = col.name;
+        viz.chartConfig.yLabel = _T("값");
+
+        // 그리드 배치 (4열 기준, 각 카드 너비 4, 높이 3)
+        LayoutItem pos;
+        pos.id = vizId;
+        pos.x  = gridX;
+        pos.y  = gridY;
+        pos.w  = 4;
+        pos.h  = 3;
+        viz.position = pos;
+
+        outDashboard.visualizations.push_back(viz);
+        outDashboard.layout.push_back(pos);
+
+        // 다음 위치 계산 (2열 배치)
+        gridX += 4;
+        if (gridX >= 8) {
+            gridX = 0;
+            gridY += 3;
+        }
+    }
+
+    outDashboard.info.datasourceId = summary.datasourceId;
+
+    return TRUE;
+}
+
 CString DashboardManager::SerializeVizInfo(const VisualizationInfo& viz)
 {
     CString json;

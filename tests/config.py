@@ -27,6 +27,10 @@ CSV_MISSING = os.path.join(DATA_DIR, "sample_missing.csv")
 CSV_HEADER_ONLY = os.path.join(DATA_DIR, "sample_header_only.csv")
 INVALID_FILE = os.path.join(DATA_DIR, "sample_invalid.txt")
 
+# 엣지케이스 테스트 데이터
+MALICIOUS_FILE = os.path.join(DATA_DIR, "malicious_test.bat")
+EMPTY_CSV = os.path.join(DATA_DIR, "sample_empty_rows.csv")
+
 # 타임아웃 (초)
 APP_START_TIMEOUT = 10
 ANALYSIS_TIMEOUT = 90

@@ -1,0 +1,69 @@
+DeepMetria MFC 자동화 테스트 결과
+실행 시각: 2026-05-28 11:20:01
+소요 시간: 170.5초
+
+테스트 ID               결과
+--------------------------------
+L-01                 PASS
+L-02                 PASS
+L-09                 PASS
+F-01                 PASS
+F-02                 PASS
+F-03                 SKIP
+F-04                 SKIP
+F-05                 PASS
+F-07                 PASS
+F-08                 PASS
+F-09                 PASS
+F-10                 PASS
+F-11_MANUAL          MANUAL
+F-12_MANUAL          MANUAL
+Q-01                 PASS
+Q-02                 PASS
+Q-03                 PASS
+Q-05                 PASS
+Q-06                 PASS
+Q-10                 PASS
+Q-07                 PASS
+Q-08                 PASS
+Q-11                 PASS
+Q-09~Q-16_MANUAL     MANUAL
+Q-12_MANUAL          MANUAL
+D-01                 PASS
+D-02                 PASS
+D-04                 PASS
+D-05                 PASS
+D-06                 PASS
+D-13                 PASS
+J-01                 PASS
+J-02                 PASS
+J-03                 PASS
+J-04                 PASS
+E-01                 PASS
+E-02_MANUAL          MANUAL
+E-03                 SKIP
+E-04                 SKIP
+E-05                 SKIP
+E-06_MANUAL          MANUAL
+DI-01                PASS
+DI-02                PASS
+DI-03_MANUAL         MANUAL
+DI-04                PASS
+DI-05                PASS
+DI-06                PASS
+DI-07_MANUAL         MANUAL
+DI-08_MANUAL         MANUAL
+DI-09_MANUAL         MANUAL
+DI-10_MANUAL         MANUAL
+DI-11                PASS
+DI-12                SKIP
+FE-01                PASS
+FE-02                SKIP
+FE-03_MANUAL         MANUAL
+FE-04_MANUAL         MANUAL
+FE-05_MANUAL         MANUAL
+DnD-01_MANUAL        MANUAL
+CE-01                SKIP
+EX-01                SKIP
+--------------------------------
+전체: 61  PASS: 37  FAIL: 0  SKIP: 9  MANUAL: 15

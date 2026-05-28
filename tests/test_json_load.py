@@ -10,32 +10,11 @@ import time
 import helpers
 from config import FILE_LOAD_TIMEOUT
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+from config import DATA_DIR
+
 SAMPLE_DATA = os.path.join(DATA_DIR, "sample_data.json")
 SAMPLE_EMPTY = os.path.join(DATA_DIR, "sample_empty.json")
 SAMPLE_MALFORMED = os.path.join(DATA_DIR, "sample_malformed.json")
-
-
-def _dismiss_any_dialog(app) -> str:
-    try:
-        dlg = app.window(class_name="#32770")
-        dlg.wait("visible", timeout=3)
-        text = ""
-        for idx in range(5):
-            try:
-                static = dlg.child_window(class_name="Static", found_index=idx)
-                t = static.window_text()
-                if t:
-                    text = t
-                    break
-            except Exception:
-                break
-        if not text:
-            text = dlg.window_text()
-        dlg.type_keys("{ENTER}")
-        return text
-    except Exception:
-        return ""
 
 
 def test_J01_json_title_bar(app, win) -> bool:
@@ -93,7 +72,7 @@ def test_J04_malformed_json(app, win) -> bool:
     try:
         helpers.open_file(app, win, SAMPLE_MALFORMED)
         time.sleep(1)
-        msg_text = _dismiss_any_dialog(app)
+        msg_text = helpers.dismiss_dialog(app)
         status = helpers.get_status_text(win)
         ok = (
             "오류" in msg_text

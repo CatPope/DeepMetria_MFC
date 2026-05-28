@@ -6,10 +6,11 @@ DeepMetria MFC 자동화 테스트 러너
   python tests/test_runner.py --connect          # 이미 실행 중인 앱에 연결
   python tests/test_runner.py --suite layout     # 특정 스위트만 실행
                                                  # 스위트: layout, file_load, query_input, data_summary,
-                                                 #         json_load, export, dashboard
+                                                 #         json_load, export, dashboard, format_editor,
+                                                 #         drag_drop, chart_e2e, export_e2e
 
 환경변수:
-  DEEPMETRIA_EXE  — 앱 실행 파일 경로 (기본값: x64\\Release\\DeepMetria.exe)
+  DEEPMETRIA_EXE  — 앱 실행 파일 경로 (기본값: x64\\Debug\\DeepMetria.exe)
 """
 import sys
 import os
@@ -30,6 +31,10 @@ import test_data_summary
 import test_json_load
 import test_export
 import test_dashboard
+import test_format_editor
+import test_drag_drop
+import test_chart_e2e
+import test_export_e2e
 
 
 # ---------------------------------------------------------------------------
@@ -51,8 +56,12 @@ MANUAL_MARKER = "MANUAL"
 def print_summary(all_results: dict, elapsed: float):
     total = len(all_results)
     manual = sum(1 for tid in all_results if MANUAL_MARKER in tid)
-    passed = sum(1 for tid, ok in all_results.items() if ok and MANUAL_MARKER not in tid)
-    failed = sum(1 for tid, ok in all_results.items() if not ok and MANUAL_MARKER not in tid)
+    skipped = sum(1 for tid, ok in all_results.items()
+                  if ok is None and MANUAL_MARKER not in tid)
+    passed = sum(1 for tid, ok in all_results.items()
+                 if ok is True and MANUAL_MARKER not in tid)
+    failed = sum(1 for tid, ok in all_results.items()
+                 if ok is False and MANUAL_MARKER not in tid)
 
     sep = "=" * 52
     print(f"\n{sep}")
@@ -63,11 +72,16 @@ def print_summary(all_results: dict, elapsed: float):
     for tid, ok in all_results.items():
         if MANUAL_MARKER in tid:
             label = "MANUAL"
+        elif ok is None:
+            label = "SKIP"
+        elif ok:
+            label = "PASS"
         else:
-            label = "PASS" if ok else "FAIL"
+            label = "FAIL"
         print(f"  {tid:<20} {label}")
     print(f"  {'-'*20} {'-'*10}")
-    print(f"  전체: {total}  PASS: {passed}  FAIL: {failed}  MANUAL: {manual}")
+    print(f"  전체: {total}  PASS: {passed}  FAIL: {failed}  "
+          f"SKIP: {skipped}  MANUAL: {manual}")
     print(f"  소요 시간: {elapsed:.1f}초")
     print(sep)
 
@@ -85,19 +99,28 @@ def save_results(all_results: dict, elapsed: float):
     ]
     total = len(all_results)
     manual = sum(1 for tid in all_results if MANUAL_MARKER in tid)
-    passed = sum(1 for tid, ok in all_results.items() if ok and MANUAL_MARKER not in tid)
-    failed = sum(1 for tid, ok in all_results.items() if not ok and MANUAL_MARKER not in tid)
+    skipped = sum(1 for tid, ok in all_results.items()
+                  if ok is None and MANUAL_MARKER not in tid)
+    passed = sum(1 for tid, ok in all_results.items()
+                 if ok is True and MANUAL_MARKER not in tid)
+    failed = sum(1 for tid, ok in all_results.items()
+                 if ok is False and MANUAL_MARKER not in tid)
 
     for tid, ok in all_results.items():
         if MANUAL_MARKER in tid:
             label = "MANUAL"
+        elif ok is None:
+            label = "SKIP"
+        elif ok:
+            label = "PASS"
         else:
-            label = "PASS" if ok else "FAIL"
+            label = "FAIL"
         lines.append(f"{tid:<20} {label}")
 
     lines += [
         "-" * 32,
-        f"전체: {total}  PASS: {passed}  FAIL: {failed}  MANUAL: {manual}",
+        f"전체: {total}  PASS: {passed}  FAIL: {failed}  "
+        f"SKIP: {skipped}  MANUAL: {manual}",
     ]
 
     with open(result_path, "w", encoding="utf-8") as f:
@@ -109,16 +132,20 @@ def save_results(all_results: dict, elapsed: float):
 # 스위트 실행
 # ---------------------------------------------------------------------------
 
-SUITE_ORDER = ["layout", "file_load", "query_input", "data_summary", "json_load", "export", "dashboard"]
+SUITE_ORDER = ["layout", "file_load", "query_input", "data_summary", "json_load", "export", "dashboard", "format_editor", "drag_drop", "chart_e2e", "export_e2e"]
 
 SUITE_DESCRIPTIONS = {
-    "layout":       "레이아웃 테스트 (L-01~L-09)",
-    "file_load":    "파일 로드 테스트 (F-01~F-09)",
-    "query_input":  "QueryInputView 테스트 (Q-01~Q-16)",
-    "data_summary": "DataSummaryView 테스트 (D-01~D-14)",
+    "layout":       "레이아웃 테스트 (L-01, L-02, L-09)",
+    "file_load":    "파일 로드 테스트 (F-01~F-12: CSV/xlsx/xls/오류/악성/빈파일/대용량)",
+    "query_input":  "QueryInputView 테스트 (Q-01~Q-12: 컨트롤/빈쿼리/Enter/파일없음/진행바/LLM오류)",
+    "data_summary": "DataSummaryView 테스트 (D-01~D-06, D-13)",
     "json_load":    "JSON 파일 로드 테스트 (J-01~J-04)",
-    "export":       "내보내기 테스트 (E-01~E-04)",
-    "dashboard":    "대시보드 인터랙션 테스트 (DI-01~DI-06)",
+    "export":       "내보내기 테스트 (E-01~E-06: 메뉴/다이얼로그/콤보/PNG저장/대시보드캡처)",
+    "dashboard":    "대시보드 인터랙션 테스트 (DI-01~DI-10: 패널/리사이즈/차트/서식)",
+    "format_editor": "서식 편집 테스트 (FE-01~FE-05: 다이얼로그/슬라이더/색상)",
+    "drag_drop":    "DnD 파일 로딩 테스트 (TC-01-08: MANUAL)",
+    "chart_e2e":    "차트 렌더링 E2E 테스트 (TC-05-06: LLM 필요)",
+    "export_e2e":   "내보내기 E2E 테스트 (TC-07-04: CSV 전체 흐름)",
 }
 
 
@@ -171,14 +198,46 @@ def run_dashboard(app, win) -> dict:
     return test_dashboard.run_suite(app, win)
 
 
+def run_format_editor(app, win) -> dict:
+    print(f"\n{'─'*48}")
+    print(f"  {SUITE_DESCRIPTIONS['format_editor']}")
+    print(f"{'─'*48}")
+    return test_format_editor.run_suite(app, win)
+
+
+def run_drag_drop(app, win) -> dict:
+    print(f"\n{'─'*48}")
+    print(f"  {SUITE_DESCRIPTIONS['drag_drop']}")
+    print(f"{'─'*48}")
+    return test_drag_drop.run_suite(app, win)
+
+
+def run_chart_e2e(app, win) -> dict:
+    print(f"\n{'─'*48}")
+    print(f"  {SUITE_DESCRIPTIONS['chart_e2e']}")
+    print(f"{'─'*48}")
+    return test_chart_e2e.run_suite(app, win)
+
+
+def run_export_e2e(app, win) -> dict:
+    print(f"\n{'─'*48}")
+    print(f"  {SUITE_DESCRIPTIONS['export_e2e']}")
+    print(f"{'─'*48}")
+    return test_export_e2e.run_suite(app, win)
+
+
 SUITE_RUNNERS = {
-    "layout":       run_layout,
-    "file_load":    run_file_load,
-    "query_input":  run_query_input,
-    "data_summary": run_data_summary,
-    "json_load":    run_json_load,
-    "export":       run_export,
-    "dashboard":    run_dashboard,
+    "layout":        run_layout,
+    "file_load":     run_file_load,
+    "query_input":   run_query_input,
+    "data_summary":  run_data_summary,
+    "json_load":     run_json_load,
+    "export":        run_export,
+    "dashboard":     run_dashboard,
+    "format_editor": run_format_editor,
+    "drag_drop":     run_drag_drop,
+    "chart_e2e":     run_chart_e2e,
+    "export_e2e":    run_export_e2e,
 }
 
 
@@ -249,6 +308,7 @@ def main():
             all_results.update(suite_results)
         except Exception as exc:
             print(f"\n  [스위트 오류] {suite_name}: {exc}")
+            all_results[f"{suite_name}_SUITE_ERROR"] = False
 
     elapsed = time.time() - start_time
 
@@ -265,7 +325,7 @@ def main():
     # 실패한 테스트가 있으면 비정상 종료 코드 반환
     failed = sum(
         1 for tid, ok in all_results.items()
-        if not ok and MANUAL_MARKER not in tid
+        if ok is False and MANUAL_MARKER not in tid
     )
     sys.exit(1 if failed > 0 else 0)
 

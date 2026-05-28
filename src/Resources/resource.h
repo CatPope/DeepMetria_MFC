@@ -15,6 +15,8 @@
 #define IDD_SETTINGS                101
 #define IDD_EXPORT                  102
 #define IDD_FILE_OPEN               103
+#define IDD_FORMAT_EDITOR           104
+#define IDD_DOWNLOAD_DLG            180
 
 // Menu command IDs
 #define ID_FILE_OPEN_DATA           32771
@@ -59,6 +61,18 @@
 #define IDC_SPIN_HEIGHT             1055
 #define IDC_EDIT_WIDTH              1056
 #define IDC_EDIT_HEIGHT             1057
+
+// FormatEditor dialog control IDs
+#define IDC_SLIDER_WIDTH            1060
+#define IDC_SLIDER_HEIGHT           1061
+#define IDC_EDIT_FMT_WIDTH          1062
+#define IDC_EDIT_FMT_HEIGHT         1063
+#define IDC_BTN_COLOR               1064
+#define IDC_STATIC_COLOR_PREVIEW    1065
+#define IDC_COMBO_CHART_TYPE        1066
+#define IDC_STATIC_PREVIEW          1067
+#define IDC_BTN_APPLY               1068
+#define IDC_BTN_FMT_CANCEL          1069
 
 // Status bar indicator IDs
 #define ID_INDICATOR_STATUS         0xE700

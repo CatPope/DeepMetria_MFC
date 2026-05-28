@@ -2,6 +2,7 @@
 #include "DashboardView.h"
 #include "../Domain/Orchestrator/AnalysisFlow.h"
 #include "../Renderer/ChartRenderer.h"
+#include "../Dialog/FormatEditorDlg.h"
 
 // ============================================================
 // IMPLEMENT_DYNCREATE / 메시지 맵
@@ -329,10 +330,12 @@ void CDashboardView::OnLButtonDblClk(UINT nFlags, CPoint point)
     int idx = HitTestCard(point);
     if (idx >= 0)
     {
-        // post-MVP: ChartView 팝업으로 확대 보기
-        // CChartView dlg; dlg.SetChartConfig(...); dlg.DoModal();
-        TRACE(_T("CDashboardView: 카드 더블클릭 — vizId=%s\n"),
-              (LPCTSTR)m_visualizations[idx].id);
+        CFormatEditorDlg dlg(m_visualizations[idx], this);
+        if (dlg.DoModal() == IDOK)
+        {
+            m_visualizations[idx] = dlg.GetUpdatedVizInfo();
+            Invalidate();
+        }
     }
     CScrollView::OnLButtonDblClk(nFlags, point);
 }

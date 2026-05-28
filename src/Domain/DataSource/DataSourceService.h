@@ -27,6 +27,9 @@ public:
     // 반환값: "*.csv;*.xlsx;*.json"
     static CString GetSupportedExtensions();
 
+    // DataTable에서 스키마 정보를 추출하여 ColumnSchema 벡터로 반환
+    static std::vector<ColumnSchema> GetSchema(const DataTable& data);
+
     // 파일 유효성 검사 (존재 여부, 크기 제한 100MB)
     BOOL ValidateFile(const CString& filePath, AppError& outError);
 

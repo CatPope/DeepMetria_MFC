@@ -28,6 +28,19 @@ FetchContent_MakeAvailable(googletest)
 set(SRC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../src")
 
 # ============================================================
+# ATL include 경로 자동 탐색 (atlstr.h 위치)
+# ============================================================
+set(ATL_INCLUDE_DIR "")
+file(GLOB _MSVC_VERSIONS
+    "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/*/atlmfc/include"
+)
+list(SORT _MSVC_VERSIONS ORDER DESCENDING)
+if(_MSVC_VERSIONS)
+    list(GET _MSVC_VERSIONS 0 ATL_INCLUDE_DIR)
+    message(STATUS "ATL include: ${ATL_INCLUDE_DIR}")
+endif()
+
+# ============================================================
 # 공통 include 경로
 # ============================================================
 set(COMMON_INCLUDES
@@ -35,6 +48,9 @@ set(COMMON_INCLUDES
     "${CMAKE_CURRENT_SOURCE_DIR}/mocks"
     "${SRC_ROOT}"
 )
+if(ATL_INCLUDE_DIR)
+    list(APPEND COMMON_INCLUDES "${ATL_INCLUDE_DIR}")
+endif()
 
 # ============================================================
 # Windows 공통 링크 라이브러리
@@ -71,6 +87,8 @@ set(UNIT_IMPL_SOURCES
     "${SRC_ROOT}/Infrastructure/LLM/OpenAIProvider.cpp"
     "${SRC_ROOT}/Infrastructure/LLM/GeminiProvider.cpp"
     "${SRC_ROOT}/Infrastructure/LLM/HttpClient.cpp"
+    # 설정 관리
+    "${SRC_ROOT}/Infrastructure/Settings/CSettingsManager.cpp"
 )
 
 if(UNIT_SOURCES)
