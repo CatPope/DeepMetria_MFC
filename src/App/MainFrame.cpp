@@ -37,6 +37,7 @@ BEGIN_MESSAGE_MAP(CMainFrame, CFrameWndEx)
     ON_MESSAGE(deepmetria::WM_USER_VIZ_SELECTED,        &CMainFrame::OnVizSelected)
     ON_MESSAGE(deepmetria::WM_USER_EXPORT_REQUEST,      &CMainFrame::OnExportRequest)
     ON_MESSAGE(deepmetria::WM_USER_LLM_ERROR,           &CMainFrame::OnLlmError)
+    ON_MESSAGE(deepmetria::WM_USER_VIZ_DELETE,          &CMainFrame::OnVizDelete)
 END_MESSAGE_MAP()
 
 CMainFrame::CMainFrame() = default;
@@ -318,22 +319,33 @@ LRESULT CMainFrame::OnSummaryReady(WPARAM /*wParam*/, LPARAM /*lParam*/)
 
 LRESULT CMainFrame::OnVisualizationReady(WPARAM /*wParam*/, LPARAM /*lParam*/)
 {
-    // View 진행률 완료 표시 + 시각화 탭 자동 전환
+    // 분석 응답은 Query 패널 채팅에 표시되므로 강제로 열어둠
+    using Tab = deepmetria::CRibbonBar::ActiveTab;
+    if (m_wndRibbon.GetSafeHwnd() && !m_wndRibbon.IsTabOpen(Tab::Query))
+    {
+        m_wndRibbon.SetTabOpen(Tab::Query, true);
+        RecalcLayout();
+    }
+
+    // View 진행률 완료 표시
     if (CDeepMetriaView* pView = dynamic_cast<CDeepMetriaView*>(GetActiveView()))
     {
         pView->SetAnalysisProgress(100);
 
-        // AI 응답 메시지 추가 (마지막 시각화 제목)
+        // AI 응답: ChatHistory의 가장 마지막 항목이 AI 인 경우(=이번 분석에서 방금 추가됨)만 표시.
+        // Doc 의 워커 콜백이 LastDescription() 을 AppendChatTurn(false, ...) 으로 누적한 직후
+        // PostMessage 가 도착하므로, 정상이면 back() 이 이번 분석의 AI 응답이다.
+        // 이전 분석의 AI 메시지를 다시 채팅에 push 하지 않도록 rbegin 순회 대신 back() 만 확인.
         CDeepMetriaDoc* pDoc = pView->GetDocument();
-        CString aiMsg = _T("분석이 완료되었습니다.");
+        CString aiMsg;
         if (pDoc)
         {
-            const auto& vizList = pDoc->GetDashboard().Visualizations();
-            if (!vizList.empty())
-                aiMsg.Format(_T("\"%s\" 시각화를 추가했어요. [시각화] 탭에서 확인하세요."),
-                             vizList.back().title.c_str());
+            const auto& hist = pDoc->ChatHistory();
+            if (!hist.empty() && !hist.back().isUser)
+                aiMsg = hist.back().text.c_str();
         }
-        m_wndQuery.AddAiMessage(aiMsg);
+        if (!aiMsg.IsEmpty())
+            m_wndQuery.AddAiMessage(aiMsg);
     }
 
     if (m_wndStatusBar.GetSafeHwnd())
@@ -566,9 +578,10 @@ void CMainFrame::OnFileOpen()
 {
     CFileDialog dlg(TRUE, nullptr, nullptr,
         OFN_HIDEREADONLY | OFN_FILEMUSTEXIST,
-        _T("데이터 파일 (*.csv;*.json)|*.csv;*.json|")
+        _T("데이터 파일 (*.csv;*.json;*.xlsx;*.xls;*.xlsm)|*.csv;*.json;*.xlsx;*.xls;*.xlsm|")
         _T("CSV 파일 (*.csv)|*.csv|")
         _T("JSON 파일 (*.json)|*.json|")
+        _T("Excel 파일 (*.xlsx;*.xls;*.xlsm)|*.xlsx;*.xls;*.xlsm|")
         _T("모든 파일 (*.*)|*.*||"));
     if (dlg.DoModal() != IDOK) return;
 
@@ -604,21 +617,63 @@ LRESULT CMainFrame::OnExportRequest(WPARAM /*wParam*/, LPARAM /*lParam*/)
     return 0;
 }
 
+LRESULT CMainFrame::OnVizDelete(WPARAM wParam, LPARAM /*lParam*/)
+{
+    int vizIdx = static_cast<int>(wParam);
+    using Tab = deepmetria::CRibbonBar::ActiveTab;
+
+    CDeepMetriaView* pView = dynamic_cast<CDeepMetriaView*>(GetActiveView());
+    if (!pView) return 0;
+    CDeepMetriaDoc* pDoc = pView->GetDocument();
+    if (!pDoc) return 0;
+
+    auto& vizList = pDoc->GetDashboard().Visualizations();
+    if (vizIdx < 0 || vizIdx >= (int)vizList.size()) return 0;
+
+    int id = vizList[vizIdx].id;
+    pDoc->GetDashboard().Remove(id);
+
+    // 선택 해제 + 서식/내보내기 비활성화
+    if (m_wndRibbon.GetSafeHwnd())
+    {
+        m_wndRibbon.SetTabEnabled(Tab::Format, false);
+        m_wndRibbon.SetTabEnabled(Tab::Export, false);
+    }
+    pView->UpdateScrollBars();
+    pView->Invalidate();
+    pView->UpdateWindow();
+    RecalcLayout();
+
+    if (m_wndStatusBar.GetSafeHwnd())
+        m_wndStatusBar.SetPaneText(0, _T("● 시각화 삭제됨"));
+    return 0;
+}
+
 LRESULT CMainFrame::OnLlmError(WPARAM /*wParam*/, LPARAM lParam)
 {
-    CString msg = _T("● LLM 오류");
-    if (lParam)
-    {
-        msg.Format(_T("● LLM 오류: %s"),
-                   reinterpret_cast<LPCWSTR>(lParam));
-    }
+    // 분석 실행 잠금 해제 + 타이머 정리 (다이얼로그 전 먼저 해야 닫혀도 안 잠김)
+    m_wndQuery.SetSubmitEnabled(true);
+    KillTimer(0xA001);
+
+    CString reason = _T("(원인 불명)");
+    if (lParam) reason = reinterpret_cast<LPCWSTR>(lParam);
+
     if (m_wndStatusBar.GetSafeHwnd())
     {
-        m_wndStatusBar.SetPaneText(0, msg);
+        CString sb;
+        sb.Format(_T("● LLM 오류: %s"), reason.GetString());
+        m_wndStatusBar.SetPaneText(0, sb);
         m_wndStatusBar.SetPaneText(1, _T("실패"));
     }
-    m_wndQuery.AddAiMessage(_T("죄송합니다. 분석 중 오류가 발생했어요. 키/모델 설정을 확인해 주세요."));
-    m_wndQuery.SetSubmitEnabled(true);
+
+    // 명시적 에러 다이얼로그 — 폴백 시각화/채팅 추가 없음
+    CString msg;
+    msg.Format(
+        _T("LLM 호출에 실패했습니다.\n\n%s\n\n")
+        _T("[설정]에서 제공자/모델/API 키를 확인하세요.\n")
+        _T("모델 ID가 잘못된 경우 ([설정] → 모델 콤보의 목록에서 선택) 가장 흔한 원인입니다."),
+        reason.GetString());
+    AfxMessageBox(msg, MB_OK | MB_ICONWARNING);
     return 0;
 }
 

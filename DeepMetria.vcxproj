@@ -153,6 +153,7 @@
     <ClInclude Include="src\Parsers\ParserFactory.h" />
     <ClInclude Include="src\Parsers\CsvParser.h" />
     <ClInclude Include="src\Parsers\JsonParser.h" />
+    <ClInclude Include="src\Parsers\XlsxParser.h" />
     <ClInclude Include="src\Render\ChartRenderer.h" />
     <ClInclude Include="src\Render\IChartStrategy.h" />
     <ClInclude Include="src\Render\ChartRenderHelpers.h" />
@@ -161,6 +162,7 @@
     <ClInclude Include="src\Render\PieChartStrategy.h" />
     <ClInclude Include="src\Render\TableChartStrategy.h" />
     <ClInclude Include="src\Render\SummaryChartStrategy.h" />
+    <ClInclude Include="src\Render\ScatterChartStrategy.h" />
     <ClInclude Include="src\UI\RibbonBar.h" />
     <ClInclude Include="src\UI\DataSummaryPane.h" />
     <ClInclude Include="src\UI\QueryInputDockPane.h" />
@@ -192,6 +194,7 @@
     <ClCompile Include="src\Infra\GeminiProvider.cpp" />
     <ClCompile Include="src\Parsers\CsvParser.cpp" />
     <ClCompile Include="src\Parsers\JsonParser.cpp" />
+    <ClCompile Include="src\Parsers\XlsxParser.cpp" />
     <ClCompile Include="src\Parsers\ParserFactory.cpp" />
     <ClCompile Include="src\Render\ChartRenderer.cpp" />
     <ClCompile Include="src\Render\BarChartStrategy.cpp" />
@@ -199,6 +202,7 @@
     <ClCompile Include="src\Render\PieChartStrategy.cpp" />
     <ClCompile Include="src\Render\TableChartStrategy.cpp" />
     <ClCompile Include="src\Render\SummaryChartStrategy.cpp" />
+    <ClCompile Include="src\Render\ScatterChartStrategy.cpp" />
     <ClCompile Include="src\UI\RibbonBar.cpp" />
     <ClCompile Include="src\UI\DataSummaryPane.cpp" />
     <ClCompile Include="src\UI\QueryInputDockPane.cpp" />

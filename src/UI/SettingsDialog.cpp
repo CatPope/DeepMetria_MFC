@@ -101,15 +101,18 @@ void CSettingsDialog::PopulateModelsForProvider(int providerIdx)
         m_cmbModel.AddString(_T("gpt-4o-mini"));
         m_cmbModel.AddString(_T("gpt-4-turbo"));
         break;
-    case 2:  // Gemini
-        m_cmbModel.AddString(_T("gemini-3.0-pro"));
-        m_cmbModel.AddString(_T("gemini-3.0-flash"));
-        m_cmbModel.AddString(_T("gemini-3.0-flash-lite"));
-        m_cmbModel.AddString(_T("gemini-3.0-ultra"));
-        m_cmbModel.AddString(_T("gemini-3.1-pro"));
-        m_cmbModel.AddString(_T("gemini-3.1-flash"));
-        m_cmbModel.AddString(_T("gemini-3.5-pro-preview"));
-        m_cmbModel.AddString(_T("gemini-3.5-flash-preview"));
+    case 2:  // Gemini — ListModels API 확인 결과 (. 대신 - 사용)
+        m_cmbModel.AddString(_T("gemini-3.5-flash"));
+        m_cmbModel.AddString(_T("gemini-3.1-pro-preview"));
+        m_cmbModel.AddString(_T("gemini-3.1-flash-lite"));
+        m_cmbModel.AddString(_T("gemini-3-pro-preview"));
+        m_cmbModel.AddString(_T("gemini-3-flash-preview"));
+        m_cmbModel.AddString(_T("gemini-2.5-pro"));
+        m_cmbModel.AddString(_T("gemini-2.5-flash"));
+        m_cmbModel.AddString(_T("gemini-2.5-flash-lite"));
+        m_cmbModel.AddString(_T("gemini-2.0-flash"));
+        m_cmbModel.AddString(_T("gemini-flash-latest"));
+        m_cmbModel.AddString(_T("gemini-pro-latest"));
         break;
     default:
         break;

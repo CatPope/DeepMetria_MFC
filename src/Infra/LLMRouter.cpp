@@ -103,7 +103,8 @@ LLMRouter::PlanResponse LLMRouter::Plan(const PlanRequest& req)
         r = it->second->Plan(req, m_apiKey, m_model);
     else
     { r.ok = false; r.error = L"알 수 없는 프로바이더"; }
-    if (!r.ok) return PlanLocalHeuristic(req);
+    // LLM 호출 실패 시 폴백 절대 금지 — error 그대로 반환해서 호출자가 에러 다이얼로그 표시.
+    // 자동으로 시각화 만들지 않고, 채팅에도 AI 응답 추가하지 않음.
     return r;
 }
 
@@ -167,6 +168,7 @@ LLMRouter::PlanResponse LLMRouter::PlanLocalHeuristic(const PlanRequest& req) co
         }
     }
 
+    // 정책: title/description 은 LLM 만 작성. 폴백 휴리스틱은 toolName/params 만 제공.
     // 폴백: 표 미리보기
     r.toolName = L"table_sample";
     r.params[L"rows"] = L"20";

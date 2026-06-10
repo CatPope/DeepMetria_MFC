@@ -3,6 +3,7 @@
 #include "ParserFactory.h"
 #include "CsvParser.h"
 #include "JsonParser.h"
+#include "XlsxParser.h"
 #include <cwctype>
 #include <algorithm>
 
@@ -18,6 +19,8 @@ std::unique_ptr<IDataParser> ParserFactory::CreateForExtension(const std::wstrin
         return std::make_unique<CsvParser>();
     if (lower == L".json")
         return std::make_unique<JsonParser>();
+    if (lower == L".xlsx" || lower == L".xls" || lower == L".xlsm")
+        return std::make_unique<XlsxParser>();
 
     return nullptr;
 }

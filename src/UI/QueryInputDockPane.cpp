@@ -8,13 +8,18 @@
 #define new DEBUG_NEW
 #endif
 
+static const wchar_t* kPlaceholderText = L"자연어로 질문을 입력하세요...";
+
 BEGIN_MESSAGE_MAP(CQueryInputDockPane, CWnd)
     ON_WM_CREATE()
     ON_WM_SIZE()
     ON_WM_PAINT()
+    ON_WM_CTLCOLOR()
     ON_WM_MOUSEWHEEL()
     ON_WM_LBUTTONDOWN()
     ON_BN_CLICKED(2001, &CQueryInputDockPane::OnBtnSubmit)
+    ON_EN_SETFOCUS (2011, &CQueryInputDockPane::OnEdSetFocus)
+    ON_EN_KILLFOCUS(2011, &CQueryInputDockPane::OnEdKillFocus)
 END_MESSAGE_MAP()
 
 CQueryInputDockPane::CQueryInputDockPane() = default;
@@ -38,12 +43,13 @@ int CQueryInputDockPane::OnCreate(LPCREATESTRUCT lpCreateStruct)
     m_lblQuery.Create(_T("질문 입력"), WS_CHILD | WS_VISIBLE | SS_LEFT,
                       CRect(0,0,0,0), this);
 
-    // 질문 입력 편집기 (placeholder는 도메인 중립)
+    // 질문 입력 편집기 (placeholder는 클릭 시 사라짐)
     m_edQuery.Create(
         WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL |
         ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN,
         CRect(0,0,0,0), this, 2011);
-    m_edQuery.SetWindowText(_T("자연어로 질문을 입력하세요..."));
+    m_isPlaceholder = true;
+    m_edQuery.SetWindowText(kPlaceholderText);
 
     // 분석 실행 버튼
     m_btnSubmit.Create(_T("→ 분석 실행"), WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
@@ -129,26 +135,44 @@ void CQueryInputDockPane::OnPaint()
     for (size_t i = 0; i < view.size() && y < bottomLimit; ++i)
     {
         const auto& m = view[i];
-        int bubbleH = 38;
         int bubbleW = (cx - margin * 2) * 2 / 3;
         int left, top = y, right;
+        int r = 8;
 
         if (m.isUser)
         {
             left  = cx - margin - bubbleW;
             right = cx - margin;
-            Gdiplus::PointF ptNa((Gdiplus::REAL)(right - 18), (Gdiplus::REAL)(top - 13));
-            g.DrawString(L"나", -1, &fontSmall, ptNa, &grayBrush);
         }
         else
         {
             left  = margin;
             right = margin + bubbleW;
+        }
+
+        // 텍스트 measure → 가변 높이 (말풍선이 잘리지 않도록)
+        Gdiplus::StringFormat sf;
+        sf.SetAlignment(m.isUser ? Gdiplus::StringAlignmentFar : Gdiplus::StringAlignmentNear);
+        sf.SetLineAlignment(Gdiplus::StringAlignmentNear);
+        sf.SetFormatFlags(0);  // 줄바꿈 허용 (NoWrap 해제)
+        Gdiplus::RectF measureRc(0, 0,
+            (Gdiplus::REAL)(right - left - r*2 - 8), 1000.f);
+        Gdiplus::RectF resultRc;
+        g.MeasureString(m.text.c_str(), -1, &fontBody, measureRc, &sf, &resultRc);
+        int textH = (int)resultRc.Height + 8;
+        int bubbleH = std::max(38, textH + 8);
+
+        if (m.isUser)
+        {
+            Gdiplus::PointF ptNa((Gdiplus::REAL)(right - 18), (Gdiplus::REAL)(top - 13));
+            g.DrawString(L"나", -1, &fontSmall, ptNa, &grayBrush);
+        }
+        else
+        {
             Gdiplus::PointF ptAI((Gdiplus::REAL)(left + 4), (Gdiplus::REAL)(top - 13));
             g.DrawString(L"AI", -1, &fontSmall, ptAI, &grayBrush);
         }
 
-        int r = 8;
         Gdiplus::GraphicsPath path;
         path.AddArc(left,        top,           r*2, r*2, 180, 90);
         path.AddArc(right - r*2, top,           r*2, r*2, 270, 90);
@@ -169,10 +193,6 @@ void CQueryInputDockPane::OnPaint()
             (Gdiplus::REAL)(top + 4),
             (Gdiplus::REAL)(right - left - r*2),
             (Gdiplus::REAL)(bubbleH - 8));
-        Gdiplus::StringFormat sf;
-        sf.SetAlignment(m.isUser ? Gdiplus::StringAlignmentFar : Gdiplus::StringAlignmentNear);
-        sf.SetLineAlignment(Gdiplus::StringAlignmentCenter);
-        sf.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
         g.DrawString(m.text.c_str(), -1, &fontBody, rcText, &sf,
                      m.isUser ? &whiteBrush : &blackBrush);
 
@@ -193,6 +213,7 @@ void CQueryInputDockPane::AddUserMessage(LPCWSTR text)
     {
         m_chatScrollY = std::max(0, m_chatContentH - m_chatAreaH);
         Invalidate();
+        UpdateWindow();  // 즉시 paint — push 직후 화면 반영 보장
     }
 }
 
@@ -204,6 +225,7 @@ void CQueryInputDockPane::AddAiMessage(LPCWSTR text)
     {
         m_chatScrollY = std::max(0, m_chatContentH - m_chatAreaH);
         Invalidate();
+        UpdateWindow();  // 즉시 paint — AI 말풍선이 다른 child 갱신에 가려지지 않도록 강제
     }
 }
 
@@ -243,12 +265,73 @@ void CQueryInputDockPane::OnLButtonDown(UINT nFlags, CPoint point)
     CWnd::OnLButtonDown(nFlags, point);
 }
 
+// placeholder 표시/제거 — focus 진입/이탈 + 보낸 직후 호출
+void CQueryInputDockPane::ShowPlaceholder()
+{
+    if (!m_edQuery.GetSafeHwnd()) return;
+    m_isPlaceholder = true;
+    m_edQuery.SetWindowText(kPlaceholderText);
+    m_edQuery.Invalidate();
+}
+
+void CQueryInputDockPane::ClearPlaceholder()
+{
+    if (!m_edQuery.GetSafeHwnd()) return;
+    m_isPlaceholder = false;
+    m_edQuery.SetWindowText(_T(""));
+    m_edQuery.Invalidate();
+}
+
+// 클릭/focus 진입 시 placeholder 제거
+void CQueryInputDockPane::OnEdSetFocus()
+{
+    if (m_isPlaceholder) ClearPlaceholder();
+}
+
+// focus 이탈 시 빈 칸이면 placeholder 복원
+void CQueryInputDockPane::OnEdKillFocus()
+{
+    CString cur;
+    if (m_edQuery.GetSafeHwnd()) m_edQuery.GetWindowText(cur);
+    cur.Trim();
+    if (cur.IsEmpty()) ShowPlaceholder();
+}
+
+// placeholder 상태일 때 회색으로 그리도록 텍스트 색 변경
+HBRUSH CQueryInputDockPane::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
+{
+    HBRUSH br = CWnd::OnCtlColor(pDC, pWnd, nCtlColor);
+    if (pWnd && pWnd->GetSafeHwnd() == m_edQuery.GetSafeHwnd() &&
+        nCtlColor == CTLCOLOR_EDIT && m_isPlaceholder)
+    {
+        pDC->SetTextColor(RGB(150, 150, 150));   // 회색 placeholder
+    }
+    return br;
+}
+
+// m_edQuery 가 focus 일 때 Ctrl+C/V/X/A 가 메인 프레임 accelerator 에
+// 가로채이는 것을 막고 Edit 컨트롤이 직접 처리하도록 보장.
+BOOL CQueryInputDockPane::PreTranslateMessage(MSG* pMsg)
+{
+    if (pMsg->message == WM_KEYDOWN || pMsg->message == WM_KEYUP || pMsg->message == WM_CHAR)
+    {
+        if (m_edQuery.GetSafeHwnd() &&
+            ::GetFocus() == m_edQuery.GetSafeHwnd())
+        {
+            ::TranslateMessage(pMsg);
+            ::DispatchMessage(pMsg);
+            return TRUE;
+        }
+    }
+    return CWnd::PreTranslateMessage(pMsg);
+}
+
 void CQueryInputDockPane::OnBtnSubmit()
 {
     CString query;
     m_edQuery.GetWindowText(query);
     query.Trim();
-    if (query.IsEmpty() || query == _T("자연어로 질문을 입력하세요..."))
+    if (query.IsEmpty() || m_isPlaceholder || query == kPlaceholderText)
     {
         AfxMessageBox(_T("질문을 입력하세요."));
         return;
@@ -265,5 +348,17 @@ void CQueryInputDockPane::OnBtnSubmit()
     if (pFrame)
         pFrame->PostMessage(deepmetria::WM_USER_QUERY_SUBMIT,
                             0, reinterpret_cast<LPARAM>(s_lastQuery.GetString()));
+
+    // 보낸 직후 입력칸 비우기 — focus 가 있으면 빈 칸 그대로, 없으면 placeholder 복원
+    if (::GetFocus() == m_edQuery.GetSafeHwnd())
+    {
+        m_isPlaceholder = false;
+        m_edQuery.SetWindowText(_T(""));
+        m_edQuery.Invalidate();
+    }
+    else
+    {
+        ShowPlaceholder();
+    }
 }
 

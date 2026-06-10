@@ -1,0 +1,48 @@
+flowchart TD
+    subgraph UI["사용자 (MFC UI)"]
+        FD["CFileDialog<br/>파일 열기"]
+        ED["CEdit<br/>자연어 질문"]
+        DV["대시보드 CView<br/>차트 / CListCtrl 표"]
+    end
+
+    ORCH["AI 오케스트레이터<br/>(Chain of Thinking)<br/>분석 계획 → 도구 선택 → 인자 결정 → 결과 종합"]
+
+    subgraph LLM["LLM Router (추상화 · WinHTTP)"]
+        RT["요청/응답 정규화<br/>프로바이더 어댑터 · 폴백"]
+        P1["Claude"]
+        P2["GPT"]
+        P3["Gemini"]
+    end
+
+    subgraph TOOLS["AnalysisTool 세트 (검증된 C++ 함수)"]
+        T1["통계 계산"]
+        T2["집계 / 그룹"]
+        T3["추세 / 이상치"]
+        WL{{"화이트리스트<br/>인자 검증 후 호출"}}
+    end
+
+    REND["GDI+ 차트 렌더러<br/>Visualization 생성"]
+
+    subgraph STORE["영속화 · 보안"]
+        DB[("SQLite<br/>DataSource / 대시보드")]
+        SEC[("레지스트리 HKCU<br/>+ DPAPI 키 암호화")]
+    end
+
+    FD -->|직접 함수 호출| ORCH
+    ED -->|워커 스레드| ORCH
+    ORCH --> RT
+    RT --> P1 & P2 & P3
+    ORCH --> WL
+    WL --> T1 & T2 & T3
+    T1 & T2 & T3 -->|분석 결과| REND
+    REND -->|WM_USER 메시지| DV
+    ORCH -.저장.-> DB
+    REND -.저장.-> DB
+    RT -.키 복호화.-> SEC
+
+    classDef ai fill:#e7f0ff,stroke:#3b6fb6,color:#1b3a66;
+    classDef tool fill:#eafaf0,stroke:#3a9d6a,color:#1d5d3c;
+    classDef store fill:#fff4e5,stroke:#c98a2b,color:#7a5111;
+    class ORCH,RT,P1,P2,P3 ai;
+    class T1,T2,T3,WL tool;
+    class DB,SEC store;

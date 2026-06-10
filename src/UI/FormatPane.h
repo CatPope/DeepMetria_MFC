@@ -22,9 +22,12 @@ public:
 protected:
     afx_msg int  OnCreate(LPCREATESTRUCT lpCreateStruct);
     afx_msg void OnSize(UINT nType, int cx, int cy);
+    afx_msg void OnPaint();
+    afx_msg BOOL OnEraseBkgnd(CDC* pDC);
     afx_msg void OnBtnApply();
     afx_msg void OnBtnReset();
     afx_msg void OnBtnPickColor();   // 그래프 색상 선택
+    afx_msg void OnBtnDelete();      // 선택 시각화 삭제
     DECLARE_MESSAGE_MAP()
 
 private:
@@ -60,4 +63,5 @@ private:
     // 하단 버튼
     CButton m_btnApply;
     CButton m_btnReset;
+    CButton m_btnDelete;
 };

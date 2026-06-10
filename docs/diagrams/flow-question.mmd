@@ -1,0 +1,24 @@
+sequenceDiagram
+    actor U as 사용자
+    participant UI as MFC UI (메인 스레드)
+    participant W as 워커 스레드
+    participant O as AI 오케스트레이터
+    participant R as LLM Router
+    participant L as LLM (Claude/GPT/Gemini)
+    participant T as AnalysisTool (검증된 함수)
+    participant G as GDI+ 렌더러
+
+    U->>UI: 자연어 질문 입력 ("월별 매출 추이")
+    UI->>UI: 진행 표시 시작
+    UI->>W: 분석 요청 (비동기)
+    W->>O: AnalysisFlow 생성
+    O->>R: 질문 + 도구 스키마 전달
+    R->>L: WinHTTP 요청 (정규화)
+    L-->>R: CoT 추론 → 도구 선택 + 인자
+    R-->>O: 정규화된 응답
+    O->>T: 인자 검증 후 함수 호출
+    T-->>O: 분석 결과 (정확한 수치)
+    O->>G: 차트 유형 결정 → 렌더
+    G-->>W: Visualization 생성
+    W->>UI: WM_USER 메시지
+    UI->>U: 대시보드 갱신 (60초 이내)

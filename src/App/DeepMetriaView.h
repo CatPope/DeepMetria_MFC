@@ -86,6 +86,10 @@ private:
 
     // 분석 진행률 (0~100). -1이면 미실행.
     int      m_progressPct   = -1;
+
+    // 시각화 hover 툴팁
+    int      m_hoverVizIndex = -1;
+    CPoint   m_hoverPoint    = {};
 };
 
 #ifndef _DEBUG

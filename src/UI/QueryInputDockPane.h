@@ -17,6 +17,10 @@ public:
     void AddUserMessage(LPCWSTR text);
     void AddAiMessage(LPCWSTR text);
 
+    // m_edQuery 가 focus 일 때 Ctrl+C/V/X/A 등이 부모 frame accelerator 에
+    // 가로채이지 않도록 직접 처리
+    virtual BOOL PreTranslateMessage(MSG* pMsg) override;
+
     // 분석 진행 중일 때 [분석 실행] 버튼 비활성화
     void SetSubmitEnabled(bool enabled);
 
@@ -25,9 +29,18 @@ protected:
     afx_msg void OnSize(UINT nType, int cx, int cy);
     afx_msg void OnPaint();
     afx_msg void OnBtnSubmit();
+    afx_msg void OnEdSetFocus();
+    afx_msg void OnEdKillFocus();
+    afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
     afx_msg BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);
     afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
     DECLARE_MESSAGE_MAP()
+
+private:
+    // placeholder 표시 중 (사용자가 아직 클릭/입력하지 않은 상태)
+    bool m_isPlaceholder = true;
+    void ShowPlaceholder();
+    void ClearPlaceholder();
 
 private:
     void LayoutChildren(int cx, int cy);

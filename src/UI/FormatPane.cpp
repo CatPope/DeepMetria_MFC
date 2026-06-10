@@ -11,6 +11,8 @@
 BEGIN_MESSAGE_MAP(CFormatPane, CWnd)
     ON_WM_CREATE()
     ON_WM_SIZE()
+    ON_WM_PAINT()
+    ON_WM_ERASEBKGND()
     ON_BN_CLICKED(3001, &CFormatPane::OnBtnApply)
     ON_BN_CLICKED(3002, &CFormatPane::OnBtnReset)
     // 차트 유형 콤보 변경 시 즉시 [적용]
@@ -20,6 +22,8 @@ BEGIN_MESSAGE_MAP(CFormatPane, CWnd)
     ON_BN_CLICKED(3018, &CFormatPane::OnBtnApply)
     // 색상 버튼
     ON_BN_CLICKED(3019, &CFormatPane::OnBtnPickColor)
+    // 삭제 버튼
+    ON_BN_CLICKED(3020, &CFormatPane::OnBtnDelete)
 END_MESSAGE_MAP()
 
 CFormatPane::CFormatPane() = default;
@@ -83,6 +87,7 @@ int CFormatPane::OnCreate(LPCREATESTRUCT lpCreateStruct)
     m_cmbChartType.AddString(_T("막대 (BAR)"));
     m_cmbChartType.AddString(_T("도넛 (DONUT)"));
     m_cmbChartType.AddString(_T("표 (TABLE)"));
+    m_cmbChartType.AddString(_T("산점도 (SCATTER)"));
     m_cmbChartType.SetCurSel(0);
 
     // 옵션 토글 — BS_AUTOCHECKBOX 로 클릭 시 자동 토글
@@ -105,6 +110,8 @@ int CFormatPane::OnCreate(LPCREATESTRUCT lpCreateStruct)
                       CRect(0,0,0,0), this, 3001);
     m_btnReset.Create(_T("초기화"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                       CRect(0,0,0,0), this, 3002);
+    m_btnDelete.Create(_T("삭제 (Del)"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                       CRect(0,0,0,0), this, 3020);
 
     return 0;
 }
@@ -154,20 +161,37 @@ void CFormatPane::LayoutChildren(int cx, int cy)
     m_btnColor.SetWindowPos(nullptr, margin, y, cx - margin*2, editH + 2, SWP_NOZORDER);
     y += editH + margin;
 
-    // 버튼 (하단)
+    // 버튼 3개 (하단)
     int btnH = 24;
-    int btnW = (cx - margin*3) / 2;
+    int btnW = (cx - margin*4) / 3;
     if (btnW < 1) btnW = 1;
     int btnY = cy - margin - btnH;
     if (btnY < y) btnY = y;
-    m_btnApply.SetWindowPos(nullptr, margin,           btnY, btnW, btnH, SWP_NOZORDER);
-    m_btnReset.SetWindowPos(nullptr, margin*2 + btnW,  btnY, btnW, btnH, SWP_NOZORDER);
+    m_btnApply .SetWindowPos(nullptr, margin,              btnY, btnW, btnH, SWP_NOZORDER);
+    m_btnReset .SetWindowPos(nullptr, margin*2 + btnW,     btnY, btnW, btnH, SWP_NOZORDER);
+    m_btnDelete.SetWindowPos(nullptr, margin*3 + btnW*2,   btnY, btnW, btnH, SWP_NOZORDER);
 }
 
 void CFormatPane::OnSize(UINT nType, int cx, int cy)
 {
     CWnd::OnSize(nType, cx, cy);
     LayoutChildren(cx, cy);
+}
+
+// 흰 배경 칠하기 — 부모(View)의 그림이 비치는 현상 방지
+void CFormatPane::OnPaint()
+{
+    CPaintDC dc(this);
+    CRect rc; GetClientRect(&rc);
+    dc.FillSolidRect(&rc, RGB(0xFF, 0xFF, 0xFF));
+}
+
+// 시스템 erase 도 흰색으로 (깜빡임 + 잔상 방지)
+BOOL CFormatPane::OnEraseBkgnd(CDC* pDC)
+{
+    CRect rc; GetClientRect(&rc);
+    pDC->FillSolidRect(&rc, RGB(0xFF, 0xFF, 0xFF));
+    return TRUE;
 }
 
 void CFormatPane::SetSelectedViz(int vizIndex, LPCTSTR title)
@@ -207,6 +231,7 @@ void CFormatPane::ApplyToViz(deepmetria::Visualization& viz) const
     case 1: viz.type = deepmetria::VizType::Bar;     break;
     case 2: viz.type = deepmetria::VizType::Pie;     break;
     case 3: viz.type = deepmetria::VizType::Table;   break;
+    case 4: viz.type = deepmetria::VizType::Scatter; break;
     default: break;
     }
 
@@ -238,11 +263,12 @@ void CFormatPane::FillFromViz(const deepmetria::Visualization& viz)
     int sel = 0;
     switch (viz.type)
     {
-    case deepmetria::VizType::Line:  sel = 0; break;
-    case deepmetria::VizType::Bar:   sel = 1; break;
-    case deepmetria::VizType::Pie:   sel = 2; break;
-    case deepmetria::VizType::Table: sel = 3; break;
-    default:                          sel = 0; break;
+    case deepmetria::VizType::Line:    sel = 0; break;
+    case deepmetria::VizType::Bar:     sel = 1; break;
+    case deepmetria::VizType::Pie:     sel = 2; break;
+    case deepmetria::VizType::Table:   sel = 3; break;
+    case deepmetria::VizType::Scatter: sel = 4; break;
+    default:                            sel = 0; break;
     }
     m_cmbChartType.SetCurSel(sel);
 
@@ -286,4 +312,17 @@ void CFormatPane::OnBtnPickColor()
         // 즉시 적용
         OnBtnApply();
     }
+}
+
+// 선택된 시각화 삭제 — MainFrame이 실제 Dashboard::Remove 호출
+void CFormatPane::OnBtnDelete()
+{
+    if (m_vizId < 0) return;
+    if (AfxMessageBox(_T("선택한 시각화를 삭제할까요?"),
+                      MB_OKCANCEL | MB_ICONQUESTION) != IDOK)
+        return;
+    CWnd* pFrame = GetParentFrame();
+    if (pFrame)
+        pFrame->PostMessage(deepmetria::WM_USER_VIZ_DELETE,
+                            static_cast<WPARAM>(m_vizId), 0);
 }

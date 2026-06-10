@@ -240,6 +240,101 @@ void CDeepMetriaView::OnDraw(CDC* pDC)
 
     pDC->BitBlt(0, 0, W, H, &memDC, 0, 0, SRCCOPY);
     memDC.SelectObject(pOldBmp);
+
+    // 시각화 hover 툴팁 — viz 카드 자체를 가리지 않도록 진입 방향 기반 배치
+    if (m_hoverVizIndex >= 0)
+    {
+        const auto& vizList = pDoc->GetDashboard().Visualizations();
+        if (m_hoverVizIndex < (int)vizList.size())
+        {
+            const auto& hv = vizList[m_hoverVizIndex];
+            CString tip = hv.description.empty()
+                ? CString(hv.title.c_str())
+                : (CString(hv.title.c_str()) + _T("\n") + CString(hv.description.c_str()));
+            if (!tip.IsEmpty())
+            {
+                Gdiplus::Graphics tg(pDC->GetSafeHdc());
+                tg.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+                tg.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
+
+                Gdiplus::FontFamily ff(L"맑은 고딕");
+                Gdiplus::Font font(&ff, 9, Gdiplus::FontStyleRegular, Gdiplus::UnitPoint);
+
+                // 가변 크기 — 텍스트 길이에 따라 박스 자동 확장.
+                // 최대 너비는 viewport 60% (단, 240~520 px 범위 클램프) 로 제한해
+                // 매우 긴 한 줄이 화면 끝까지 가는 것을 막고 줄바꿈 유도.
+                const int padX = 12, padY = 10;
+                const int gap  = 12;
+                int maxTipW = std::max(240, std::min(520, (int)(W * 0.60)));
+                int innerMax = maxTipW - padX * 2;
+
+                Gdiplus::StringFormat sf;
+                sf.SetFormatFlags(0);  // 줄바꿈 허용 (NoWrap 해제)
+                Gdiplus::RectF measureRc(0, 0, (Gdiplus::REAL)innerMax, 4000.f);
+                Gdiplus::RectF resultRc;
+                tg.MeasureString(tip, -1, &font, measureRc, &sf, &resultRc);
+
+                int tipW = std::min(maxTipW, (int)std::ceil(resultRc.Width)  + padX * 2);
+                int tipH =                  (int)std::ceil(resultRc.Height) + padY * 2;
+                // 최소 한 줄 보장
+                if (tipH < 32) tipH = 32;
+                if (tipW < 80) tipW = 80;
+
+                // viz 카드의 화면 좌표 (가상 좌표 → 화면 좌표)
+                int sx = GetScrollPos(SB_HORZ);
+                int sy = GetScrollPos(SB_VERT);
+                CRect cardScreen(hv.x - sx, hv.y - sy,
+                                 hv.x - sx + hv.width, hv.y - sy + hv.height);
+
+                // 마우스가 카드 어느 변에 가까운지 → 그 변 바깥에 툴팁 배치
+                int dTop    = m_hoverPoint.y - cardScreen.top;
+                int dBottom = cardScreen.bottom - m_hoverPoint.y;
+                int dLeft   = m_hoverPoint.x - cardScreen.left;
+                int dRight  = cardScreen.right - m_hoverPoint.x;
+                int minD = std::min({ dTop, dBottom, dLeft, dRight });
+
+                int tx, ty;
+                if (minD == dTop)
+                {
+                    tx = m_hoverPoint.x - tipW / 2;
+                    ty = cardScreen.top - tipH - gap;
+                }
+                else if (minD == dRight)
+                {
+                    tx = cardScreen.right + gap;
+                    ty = m_hoverPoint.y - tipH / 2;
+                }
+                else if (minD == dLeft)
+                {
+                    tx = cardScreen.left - tipW - gap;
+                    ty = m_hoverPoint.y - tipH / 2;
+                }
+                else  // dBottom
+                {
+                    tx = m_hoverPoint.x - tipW / 2;
+                    ty = cardScreen.bottom + gap;
+                }
+
+                // 화면 밖이면 안쪽으로 보정
+                if (tx + tipW > W) tx = W - tipW - 4;
+                if (ty + tipH > H) ty = H - tipH - 4;
+                if (tx < 4) tx = 4;
+                if (ty < 4) ty = 4;
+
+                Gdiplus::SolidBrush bg(Gdiplus::Color(240, 30, 41, 59));   // 어두운 슬레이트 (alpha)
+                Gdiplus::Pen        border(Gdiplus::Color(220, 100, 116, 139), 1.0f);
+                Gdiplus::Rect r(tx, ty, tipW, tipH);
+                tg.FillRectangle(&bg, r);
+                tg.DrawRectangle(&border, r);
+
+                Gdiplus::SolidBrush text(Gdiplus::Color(255, 248, 250, 252));
+                Gdiplus::RectF rcText(
+                    (float)(tx + padX), (float)(ty + padY),
+                    (float)(tipW - padX * 2), (float)(tipH - padY * 2));
+                tg.DrawString(tip, -1, &font, rcText, &sf, &text);
+            }
+        }
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -914,24 +1009,92 @@ void CDeepMetriaView::OnLButtonUp(UINT nFlags, CPoint point)
 
 void CDeepMetriaView::OnMouseMove(UINT nFlags, CPoint point)
 {
-    if (m_dragMode != DragMode::None && m_dragVizIndex >= 0)
+    // 드래그 중이 아닐 때 hover 감지
+    if (m_dragMode == DragMode::None)
+    {
+        CPoint vp(point.x + GetScrollPos(SB_HORZ),
+                  point.y + GetScrollPos(SB_VERT));
+        int hit = -1;
+        if (CDeepMetriaDoc* pDoc = GetDocument())
+            hit = pDoc->GetDashboard().HitTest(vp.x, vp.y);
+        if (hit != m_hoverVizIndex)
+        {
+            m_hoverVizIndex = hit;
+            m_hoverPoint = point;
+            Invalidate();
+        }
+        else if (hit >= 0)
+        {
+            m_hoverPoint = point;
+        }
+    }
+
+    if (m_dragMode != DragMode::None &&
+        m_dragMode != DragMode::TableSpawn &&
+        m_dragVizIndex >= 0)
     {
         CPoint vp(point.x + GetScrollPos(SB_HORZ),
                   point.y + GetScrollPos(SB_VERT));
         auto& viz = GetDocument()->GetDashboard().Visualizations()[m_dragVizIndex];
         int dx = vp.x - m_dragOrigin.x;
         int dy = vp.y - m_dragOrigin.y;
-        if (m_dragMode == DragMode::Move)
+        const int kMinW = 80, kMinH = 60;
+
+        switch (m_dragMode)
         {
-            viz.x += dx;
-            viz.y += dy;
+        case DragMode::Move:
+            viz.x += dx; viz.y += dy; break;
+        case DragMode::ResizeBR:
+            viz.width  = std::max(kMinW, viz.width  + dx);
+            viz.height = std::max(kMinH, viz.height + dy);
+            break;
+        case DragMode::ResizeBL:
+        {
+            int newW = std::max(kMinW, viz.width  - dx);
+            viz.x   += (viz.width - newW);
+            viz.width = newW;
+            viz.height = std::max(kMinH, viz.height + dy);
+            break;
         }
-        else
+        case DragMode::ResizeTR:
         {
-            viz.width  = std::max(80,  viz.width  + dx);
-            viz.height = std::max(60,  viz.height + dy);
+            int newH = std::max(kMinH, viz.height - dy);
+            viz.y   += (viz.height - newH);
+            viz.height = newH;
+            viz.width  = std::max(kMinW, viz.width + dx);
+            break;
+        }
+        case DragMode::ResizeTL:
+        {
+            int newW = std::max(kMinW, viz.width  - dx);
+            int newH = std::max(kMinH, viz.height - dy);
+            viz.x   += (viz.width  - newW);
+            viz.y   += (viz.height - newH);
+            viz.width  = newW; viz.height = newH;
+            break;
+        }
+        case DragMode::ResizeT:
+        {
+            int newH = std::max(kMinH, viz.height - dy);
+            viz.y   += (viz.height - newH);
+            viz.height = newH;
+            break;
+        }
+        case DragMode::ResizeB:
+            viz.height = std::max(kMinH, viz.height + dy); break;
+        case DragMode::ResizeL:
+        {
+            int newW = std::max(kMinW, viz.width - dx);
+            viz.x   += (viz.width - newW);
+            viz.width = newW;
+            break;
+        }
+        case DragMode::ResizeR:
+            viz.width = std::max(kMinW, viz.width + dx); break;
+        default: break;
         }
         m_dragOrigin = vp;
+        UpdateScrollBars();  // 화면 밖으로 나가면 스크롤 자동 확장
         Invalidate();
     }
     CView::OnMouseMove(nFlags, point);
@@ -939,6 +1102,28 @@ void CDeepMetriaView::OnMouseMove(UINT nFlags, CPoint point)
 
 void CDeepMetriaView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 {
+    if (nChar == VK_DELETE && m_selectedViz >= 0)
+    {
+        if (CDeepMetriaDoc* pDoc = GetDocument())
+        {
+            auto& vizList = pDoc->GetDashboard().Visualizations();
+            if (m_selectedViz < (int)vizList.size())
+            {
+                int id = vizList[m_selectedViz].id;
+                pDoc->GetDashboard().Remove(id);
+                m_selectedViz = -1;
+                m_dragVizIndex = -1;
+                m_dragMode = DragMode::None;
+                // 서식/내보내기 탭 비활성화 신호
+                if (CFrameWnd* pFrame = GetParentFrame())
+                    pFrame->PostMessage(deepmetria::WM_USER_VIZ_SELECTED,
+                                        static_cast<WPARAM>(-1), 0);
+                UpdateScrollBars();
+                Invalidate();
+                return;
+            }
+        }
+    }
     CView::OnKeyDown(nChar, nRepCnt, nFlags);
 }
 

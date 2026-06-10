@@ -15,5 +15,6 @@ constexpr UINT WM_USER_RIBBON_TAB_CHANGED   = WM_USER + 108;
 constexpr UINT WM_USER_QUERY_SUBMIT         = WM_USER + 109;
 constexpr UINT WM_USER_VIZ_SELECTED         = WM_USER + 110;
 constexpr UINT WM_USER_VIZ_FORMAT_APPLIED   = WM_USER + 111;
+constexpr UINT WM_USER_VIZ_DELETE           = WM_USER + 112;
 
 } // namespace deepmetria

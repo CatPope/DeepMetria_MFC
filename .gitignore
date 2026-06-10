@@ -35,10 +35,18 @@ build_output.txt
 build_r*.log
 build_u*.log
 build_rc_log.txt
+build_dbg_out.txt
+build_diag.log
+rebuild_output.txt
 selftest_*.txt
 pipeline_result.json
 tests/test_results.txt
 tests/screenshots/
+tests/data/*.xlsx
+tests/data/*.xls
+tests/data/*.xlsm
+tests/data/*.csv
+tests/data/*.json
 .tmp_pptx/
 _legacy/
 

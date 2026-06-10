@@ -43,9 +43,9 @@ BOOL CExportDialog::OnInitDialog()
     CDialogEx::OnInitDialog();
 
     // 해상도 목록
-    m_cmbResolution.AddString(_T("1x (540×360)"));
-    m_cmbResolution.AddString(_T("2x 고해상도 (1080×720)"));
-    m_cmbResolution.AddString(_T("4x 초고해상도 (2160×1440)"));
+    m_cmbResolution.AddString(_T("1x (원본 크기)"));
+    m_cmbResolution.AddString(_T("2x 고해상도"));
+    m_cmbResolution.AddString(_T("4x 초고해상도"));
     m_cmbResolution.SetCurSel(1);
 
     // 기본 저장 경로 — 사용자 바탕화면 (권한 안전, 즉시 확인 가능)
@@ -114,12 +114,12 @@ void CExportDialog::OnBtnSave()
         }
     }
 
+    // 해상도 옵션은 scale 배수로 동작 (1x / 2x / 4x)
     int resSel = m_cmbResolution.GetCurSel();
-    int w = 540, h = 360;
-    if (resSel == 1) { w = 1080; h = 720; }
-    else if (resSel == 2) { w = 2160; h = 1440; }
+    int scale = 1;
+    if (resSel == 1) scale = 2;
+    else if (resSel == 2) scale = 4;
 
-    CRect client(0, 0, w, h);
     deepmetria::ChartRenderer renderer;
 
     // 선택중인 그래프만 vs 대시보드 전체
@@ -129,19 +129,53 @@ void CExportDialog::OnBtnSave()
     if (onlySelected && m_selectedVizIdx >= 0 &&
         m_selectedVizIdx < (int)m_dash.Visualizations().size())
     {
-        // 임시 Dashboard에 선택 viz만 담아 export (원본은 const)
+        // 선택 viz만 — 좌상단(16,16) 기준 캔버스에 맞춤
+        const int baseW = 720, baseH = 480;
+        int outW = baseW * scale, outH = baseH * scale;
+
         deepmetria::Dashboard tmpDash;
         auto viz = m_dash.Visualizations()[m_selectedVizIdx];
-        viz.x = 16; viz.y = 16;  // 좌상단에 배치
-        viz.width  = w - 32;
-        viz.height = h - 32;
+        viz.x = 16 * scale;
+        viz.y = 16 * scale;
+        viz.width  = outW - 32 * scale;
+        viz.height = outH - 32 * scale;
         tmpDash.Add(viz);
+
+        CRect client(0, 0, outW, outH);
         ok = renderer.ExportDashboardToImage(client, m_ds, tmpDash,
                                              std::wstring(path.GetString()));
     }
     else
     {
-        ok = renderer.ExportDashboardToImage(client, m_ds, m_dash,
+        // 대시보드 전체 — viz 들의 bounding box를 계산해 캔버스 사이즈 자동 결정
+        const auto& vizs = m_dash.Visualizations();
+        if (vizs.empty())
+        {
+            AfxMessageBox(_T("내보낼 시각화가 없습니다.\n먼저 분석으로 시각화를 만들어 주세요."),
+                          MB_OK | MB_ICONWARNING);
+            return;
+        }
+        int maxX = 0, maxY = 0;
+        for (const auto& v : vizs)
+        {
+            if (v.x + v.width  > maxX) maxX = v.x + v.width;
+            if (v.y + v.height > maxY) maxY = v.y + v.height;
+        }
+        maxX += 16;  // 우측 패딩
+        maxY += 16;  // 하단 패딩
+
+        // 임시 dashboard 에 scale 배수 적용한 사본 담기
+        deepmetria::Dashboard tmpDash;
+        for (const auto& v : vizs)
+        {
+            auto sv = v;
+            sv.x *= scale; sv.y *= scale;
+            sv.width *= scale; sv.height *= scale;
+            tmpDash.Add(sv);
+        }
+
+        CRect client(0, 0, maxX * scale, maxY * scale);
+        ok = renderer.ExportDashboardToImage(client, m_ds, tmpDash,
                                              std::wstring(path.GetString()));
     }
 

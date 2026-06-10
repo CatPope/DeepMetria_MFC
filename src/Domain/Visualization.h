@@ -5,7 +5,7 @@
 
 namespace deepmetria {
 
-enum class VizType { Table, Bar, Line, Pie, Summary };
+enum class VizType { Table, Bar, Line, Pie, Summary, Scatter };
 
 struct Series
 {
@@ -36,6 +36,7 @@ struct Visualization
     std::vector<std::vector<std::wstring>>   tableCells;
     // 부가 정보
     std::wstring caption;
+    std::wstring description;  // LLM이 만든 시각화 설명 — 카드 hover 시 툴팁 + 채팅에도 표시
 };
 
 } // namespace deepmetria

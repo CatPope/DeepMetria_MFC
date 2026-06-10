@@ -3,6 +3,7 @@
 #include "OpenAIProvider.h"
 #include "HttpClient.h"
 #include <sstream>
+#include <unordered_map>
 
 namespace deepmetria {
 
@@ -40,31 +41,251 @@ std::wstring ExtractJsonString(const std::wstring& json, const std::wstring& key
     return json.substr(q1 + 1, q2 - q1 - 1);
 }
 
+std::unordered_map<std::wstring, std::wstring>
+ExtractParamsMap(const std::wstring& json)
+{
+    std::unordered_map<std::wstring, std::wstring> out;
+    auto p = json.find(L"\"params\"");
+    if (p == std::wstring::npos) return out;
+    auto open = json.find(L'{', p);
+    if (open == std::wstring::npos) return out;
+    int depth = 0; size_t end = open; bool inStr = false;
+    for (size_t i = open; i < json.size(); ++i)
+    {
+        wchar_t c = json[i];
+        if (c == L'"' && (i == 0 || json[i-1] != L'\\')) inStr = !inStr;
+        if (inStr) continue;
+        if (c == L'{') ++depth;
+        else if (c == L'}') { --depth; if (depth == 0) { end = i; break; } }
+    }
+    if (end <= open) return out;
+    std::wstring body = json.substr(open + 1, end - open - 1);
+    size_t i = 0;
+    while (i < body.size())
+    {
+        auto k1 = body.find(L'"', i);
+        if (k1 == std::wstring::npos) break;
+        auto k2 = body.find(L'"', k1 + 1);
+        if (k2 == std::wstring::npos) break;
+        std::wstring key = body.substr(k1 + 1, k2 - k1 - 1);
+        auto colon = body.find(L':', k2);
+        if (colon == std::wstring::npos) break;
+        size_t v = colon + 1;
+        while (v < body.size() && (body[v] == L' ' || body[v] == L'\t' || body[v] == L'\n')) ++v;
+        std::wstring val;
+        if (v < body.size() && body[v] == L'"')
+        {
+            auto v2 = body.find(L'"', v + 1);
+            if (v2 == std::wstring::npos) break;
+            val = body.substr(v + 1, v2 - v - 1);
+            i = v2 + 1;
+        }
+        else
+        {
+            size_t v2 = v;
+            while (v2 < body.size() && body[v2] != L',' && body[v2] != L'}' && body[v2] != L'\n')
+                ++v2;
+            val = body.substr(v, v2 - v);
+            while (!val.empty() && (val.back() == L' ' || val.back() == L'\t' || val.back() == L'\r'))
+                val.pop_back();
+            i = v2;
+        }
+        if (!key.empty()) out[key] = val;
+    }
+    return out;
+}
+
 } // namespace
+
+static std::string JsonEscape(const std::string& s)
+{
+    std::string out; out.reserve(s.size() + 8);
+    for (char c : s)
+    {
+        switch (c)
+        {
+        case '"' : out += "\\\""; break;
+        case '\\': out += "\\\\"; break;
+        case '\n': out += "\\n";  break;
+        case '\r': out += "\\r";  break;
+        case '\t': out += "\\t";  break;
+        default:
+            if ((unsigned char)c < 0x20) out += ' ';
+            else out += c;
+        }
+    }
+    return out;
+}
 
 LLMRouter::PlanResponse OpenAIProvider::Plan(const LLMRouter::PlanRequest& req,
                                               const std::wstring& apiKey,
                                               const std::wstring& model) const
 {
     LLMRouter::PlanResponse r;
+
+    // 시스템 프롬프트
+    std::wstring sys;
+    sys += L"당신은 한국어 데이터 분석 어시스턴트입니다. 컬럼 메타와 도구만 보고 결정합니다.\n";
+    sys += L"[데이터] " + req.dataSummary + L"\n";
+    if (!req.columns.empty())
+    {
+        sys += L"[컬럼]\n";
+        for (const auto& c : req.columns)
+        {
+            const wchar_t* t = c.typeEnum == 1 ? L"수치" : c.typeEnum == 2 ? L"텍스트" : c.typeEnum == 3 ? L"날짜" : L"기타";
+            sys += L"- " + c.name + L" (" + t + L")";
+            if (c.missing > 0) sys += L", 결측 " + std::to_wstring(c.missing);
+            if (c.typeEnum == 1)
+            {
+                wchar_t buf[128];
+                swprintf_s(buf, L", 평균 %.2f, min %.2f, max %.2f", c.meanVal, c.minVal, c.maxVal);
+                sys += buf;
+            }
+            else if (c.typeEnum == 2 && c.uniqueCount > 0)
+                sys += L", " + std::to_wstring(c.uniqueCount) + L"개 고유값";
+            if (!c.sampleValue.empty()) sys += L", 예: \"" + c.sampleValue + L"\"";
+            sys += L"\n";
+        }
+    }
+    if (!req.tools.empty())
+    {
+        sys += L"[도구] (모두 시각화 생성형 — 호출 시 viz 카드가 만들어짐)\n";
+        sys += L"각 도구의 params 키 이름은 스키마와 정확히 일치해야 함. 임의로 추측 금지.\n";
+        for (const auto& t : req.tools)
+        {
+            sys += L"- " + t.name + L": " + t.description + L"\n";
+            sys += L"    params 스키마: " + t.jsonParameters + L"\n";
+        }
+    }
+    sys += L"\n[데이터 형식 가이드]\n"
+           L"- wide 형식 (한 행 = 한 시점, 여러 수치 컬럼이 카테고리 역할): "
+           L"compare_columns / compare_rows / select_rows_columns 사용.\n"
+           L"  예) 컬럼 = [연도, 중앙정부, 지방자치단체, 적자성채무] 인 경우 \n"
+           L"      '2010년의 부처별 예산' → compare_columns(filterColumn=연도, filterValue=2010, valueColumnsCsv=\"중앙정부,지방자치단체,적자성채무\")\n"
+           L"- long 형식 (한 행 = 한 측정, group 컬럼 + 단일 value 컬럼): "
+           L"group_by_sum / group_by_mean / aggregate 사용.\n"
+           L"- 컬럼이 같은 단위 수치 여러 개 = wide. 컬럼이 카테고리 1개 + 값 1개 = long.\n\n"
+           L"사용자가 시각화/그래프/표를 명시적으로 요청한 경우에만 도구 호출.\n"
+           L"필드 규칙:\n"
+           L"- title: 시각화 카드 헤더 (8자 이내 짧은 라벨)\n"
+           L"- description: ★★ 반드시 포함 (필수) ★★. 채팅으로 전달할 1-3문장 결과/인사이트.\n"
+           L"  title과 절대 같으면 안 되고, '시각화를 만들었습니다' 같은 무의미한 안내문 금지.\n"
+           L"  실제 데이터에서 발견한 패턴/수치/경향을 짧게 설명할 것.\n"
+           L"- 시각화 필요: {\"toolName\":\"...\",\"params\":{...},\"title\":\"짧은 제목\",\"description\":\"결과 설명\",\"reasoning\":\"사고\"}\n"
+           L"- 단순 대화: {\"toolName\":\"\",\"description\":\"답변\",\"reasoning\":\"사고\"}\n"
+           L"어떤 경우든 description 은 비워두면 안 됨.";
+
+    // messages: system + history + 새 user
+    std::string msgs = "[{\"role\":\"system\",\"content\":\"";
+    msgs += JsonEscape(WToU8(sys));
+    msgs += "\"}";
+    for (const auto& turn : req.history)
+    {
+        msgs += ",{\"role\":\"";
+        msgs += (turn.isUser ? "user" : "assistant");
+        msgs += "\",\"content\":\"";
+        msgs += JsonEscape(WToU8(turn.text));
+        msgs += "\"}";
+    }
+    msgs += ",{\"role\":\"user\",\"content\":\"";
+    msgs += JsonEscape(WToU8(req.question));
+    msgs += "\"}]";
+
     std::ostringstream body;
     body << "{\"model\":\"" << WToU8(model.empty() ? L"gpt-4o-mini" : model) << "\","
-         << "\"messages\":[{\"role\":\"user\",\"content\":\""
-         << WToU8(req.question)
-         << " 응답은 다음 JSON: {\\\"toolName\\\":\\\"...\\\",\\\"params\\\":{...},\\\"title\\\":\\\"자연스러운 한국어 제목\\\",\\\"reasoning\\\":\\\"간단한 사고\\\"}\"}]}";
+         << "\"messages\":" << msgs << "}";
 
     std::wstring headers =
         L"Content-Type: application/json\r\n"
         L"Authorization: Bearer " + apiKey + L"\r\n";
 
     auto resp = HttpClient::Post(L"api.openai.com", L"/v1/chat/completions", headers, body.str());
-    if (!resp.ok()) { r.ok = false; r.error = L"OpenAI 호출 실패"; return r; }
+    if (!resp.ok())
+    {
+        r.ok = false;
+        wchar_t buf[64]; swprintf_s(buf, L"OpenAI HTTP %d", resp.status);
+        r.error = buf;
+        std::wstring err = U8ToW(resp.body);
+        auto msg = ExtractJsonString(err, L"message");
+        if (!msg.empty())
+        {
+            if (msg.size() > 200) msg = msg.substr(0, 200) + L"…";
+            r.error += L": " + msg;
+        }
+        else if (!resp.error.empty())
+        {
+            r.error += L" (" + resp.error + L")";
+        }
+        return r;
+    }
     std::wstring w = U8ToW(resp.body);
-    r.toolName  = ExtractJsonString(w, L"toolName");
-    r.title     = ExtractJsonString(w, L"title");
-    auto reason = ExtractJsonString(w, L"reasoning");
-    r.reasoning = reason.empty() ? L"OpenAI 응답 파싱" : reason;
-    r.ok = !r.toolName.empty();
+    // OpenAI 응답도 message.content 안에 JSON string 으로 포장되어 \" escape 됨. unescape.
+    {
+        std::wstring tmp; tmp.reserve(w.size());
+        for (size_t i = 0; i < w.size(); ++i)
+        {
+            if (w[i] == L'\\' && i + 1 < w.size())
+            {
+                wchar_t n = w[i + 1];
+                if (n == L'"' || n == L'\\') { tmp += n; ++i; continue; }
+                if (n == L'n') { tmp += L'\n'; ++i; continue; }
+                if (n == L't') { tmp += L'\t'; ++i; continue; }
+                if (n == L'/') { tmp += L'/';  ++i; continue; }
+                if (n == L'r') {              ++i; continue; }
+            }
+            tmp += w[i];
+        }
+        w.swap(tmp);
+    }
+    // message.content 다음의 '{' 부터 매칭되는 '}' 까지를 inner 로. markdown fence 제거.
+    std::wstring inner = w;
+    {
+        auto contentPos = w.find(L"\"content\"");
+        if (contentPos != std::wstring::npos)
+        {
+            auto braceL = w.find(L'{', contentPos);
+            if (braceL != std::wstring::npos)
+            {
+                int depth = 0; size_t i = braceL; bool inStr = false;
+                for (; i < w.size(); ++i)
+                {
+                    wchar_t c = w[i];
+                    if (c == L'"' && (i == 0 || w[i-1] != L'\\')) inStr = !inStr;
+                    if (inStr) continue;
+                    if (c == L'{') ++depth;
+                    else if (c == L'}') { --depth; if (depth == 0) { ++i; break; } }
+                }
+                if (i > braceL) inner = w.substr(braceL, i - braceL);
+            }
+        }
+        auto fence = inner.find(L"```");
+        if (fence != std::wstring::npos)
+        {
+            auto bodyStart = inner.find(L'\n', fence);
+            auto endFence  = inner.find(L"```", fence + 3);
+            if (bodyStart != std::wstring::npos && endFence != std::wstring::npos
+                && bodyStart < endFence)
+                inner = inner.substr(bodyStart + 1, endFence - bodyStart - 1);
+        }
+    }
+    r.toolName    = ExtractJsonString(inner, L"toolName");
+    r.title       = ExtractJsonString(inner, L"title");
+    r.description = ExtractJsonString(inner, L"description");
+    r.params      = ExtractParamsMap(inner);
+    if (r.toolName.empty())    r.toolName    = ExtractJsonString(w, L"toolName");
+    if (r.title.empty())       r.title       = ExtractJsonString(w, L"title");
+    if (r.description.empty()) r.description = ExtractJsonString(w, L"description");
+    if (r.params.empty())      r.params      = ExtractParamsMap(w);
+    auto reason   = ExtractJsonString(inner, L"reasoning");
+    if (reason.empty()) reason = ExtractJsonString(w, L"reasoning");
+    r.reasoning   = reason.empty() ? L"OpenAI 응답 파싱" : reason;
+    if (r.description.empty())
+    {
+        r.ok = false;
+        r.error = L"LLM이 description 필드를 반환하지 않았습니다. (OpenAI 응답)";
+        return r;
+    }
+    r.ok = true;
     return r;
 }
 

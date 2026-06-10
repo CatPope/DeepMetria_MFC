@@ -51,6 +51,7 @@ protected:
     afx_msg LRESULT OnQuerySubmit(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnVizFormatApplied(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnVizSelected(WPARAM wParam, LPARAM lParam);
+    afx_msg LRESULT OnVizDelete(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnExportRequest(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnLlmError(WPARAM wParam, LPARAM lParam);
     afx_msg void    OnAppSettings();

@@ -8,6 +8,7 @@
 #include "PieChartStrategy.h"
 #include "TableChartStrategy.h"
 #include "SummaryChartStrategy.h"
+#include "ScatterChartStrategy.h"
 #include <algorithm>
 #include <memory>
 
@@ -47,6 +48,7 @@ void ChartRenderer::RenderDashboard(Graphics& g, const CRect& client,
         case VizType::Line:    s.reset(new LineChartStrategy());    break;
         case VizType::Pie:     s.reset(new PieChartStrategy());     break;
         case VizType::Summary: s.reset(new SummaryChartStrategy()); break;
+        case VizType::Scatter: s.reset(new ScatterChartStrategy()); break;
         }
         if (s) s->Draw(g, v, &ds);
     }
@@ -60,13 +62,28 @@ void ChartRenderer::DrawCard(Graphics& g, const Visualization& v)
     g.DrawRectangle(&border, v.x, v.y, v.width, v.height);
 
     // 타이틀 바 — showTitle 일 때만 헤더 그림. 미체크 시 공란.
+    // 빈 title 폴백 — viz 종류별로 "그래프" / "표" 기본 라벨.
     if (v.showTitle)
     {
-        SolidBrush titleBg(Color(255, 248, 250, 252));
-        g.FillRectangle(&titleBg, v.x, v.y, v.width, 28);
-        DrawLabel(g, v.title, static_cast<REAL>(v.x + 10), static_cast<REAL>(v.y),
-                 static_cast<REAL>(v.width - 20), 28,
-                 FromArgb24(0x111827), 12, true);
+        std::wstring shown = v.title;
+        if (shown.empty())
+        {
+            shown = (v.type == VizType::Table)   ? L"표"
+                  : (v.type == VizType::Summary) ? L"요약"
+                  : (v.type == VizType::Pie)     ? L"도넛 차트"
+                  : (v.type == VizType::Line)    ? L"꺾은선 차트"
+                  : (v.type == VizType::Scatter) ? L"산점도"
+                  : (v.type == VizType::Bar)     ? L"막대 차트" : L"그래프";
+        }
+
+        const int titleH = 32;
+        SolidBrush titleBg(Color(255, 241, 245, 249));   // 살짝 더 진한 회색
+        Pen        titleBd(Color(255, 226, 232, 240), 1.0f);
+        g.FillRectangle(&titleBg, v.x, v.y, v.width, titleH);
+        g.DrawLine(&titleBd, v.x, v.y + titleH, v.x + v.width, v.y + titleH);
+        DrawLabel(g, shown, static_cast<REAL>(v.x + 12), static_cast<REAL>(v.y + 2),
+                 static_cast<REAL>(v.width - 24), titleH - 4,
+                 FromArgb24(0x0F172A), 14, true);
     }
 
     // 우하단 리사이즈 그립 (16x16)
