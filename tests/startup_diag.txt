@@ -1,0 +1,17 @@
+InitInstance.START
+After CWinAppEx::InitInstance
+After AddDocTemplate
+Before ProcessShellCommand (FileNothing)
+After ProcessShellCommand rc=1
+Manual SDI: new CMainFrame
+Manual: calling LoadFrame
+  MainFrame.PreCreateWindow.START
+  PreCreateWindow parent OK
+  MainFrame.OnCreate.START
+  CFrameWndEx::OnCreate rc=0
+  After EnableDocking
+  Ribbon OK
+  After all panes + statusbar
+  MainFrame.OnCreate.END return 0
+Manual LoadFrame rc=1 GetLastError=0 hWnd=0000000000590DBC
+InitInstance.END.return TRUE

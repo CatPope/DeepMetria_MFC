@@ -1,0 +1,17 @@
+[PASS] CsvLoadCommand
+[PASS] JsonLoadCommand
+[PASS] BasicStatsCommand
+[PASS] GroupBySumCommand
+[PASS] PngExportCommand
+[PASS] LLMHeuristicCommand
+[PASS] ChainOfThinkingCommand
+[PASS] DialogResourceCommand
+[PASS] DashboardDragCommand
+[PASS] SecretsStoreRoundtripCommand
+[PASS] MemoryCacheTtlCommand
+[PASS] ParserFactoryCommand
+[PASS] ChartRendererStrategyCommand
+[PASS] AnalysisToolCatalogCommand
+SELFTEST OK
+[PASS] integration
+# elapsed: 0.16s

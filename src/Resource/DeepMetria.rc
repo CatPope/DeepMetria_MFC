@@ -1,0 +1,178 @@
+// DeepMetria.rc - MFC resource script (UTF-8, LANG_KOREAN)
+// 커스텀 ID는 숫자 리터럴 사용 (RC 컴파일러 include 경로 문제 우회)
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+#include "afxres.h"
+#include "verrsrc.h"
+#undef APSTUDIO_READONLY_SYMBOLS
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_KOR)
+LANGUAGE LANG_KOREAN, SUBLANG_DEFAULT
+#pragma code_page(65001)
+
+/////////////////////////////////////////////////////////////////////////////
+// IDR_MAINFRAME MENU — MFC SDI LoadFrame 가 m_hMenuShared 채우는 데 필요.
+// 빈 메뉴(실 표시 없음). MainFrame::OnCreate 에서 SetMenu(nullptr) 로 화면에선 안 보임.
+IDR_MAINFRAME MENU
+BEGIN
+    POPUP "_"
+    BEGIN
+        MENUITEM "_", 0
+    END
+END
+
+/////////////////////////////////////////////////////////////////////////////
+// Accelerators
+IDR_MAINFRAME ACCELERATORS
+BEGIN
+    "N",    ID_FILE_NEW,    VIRTKEY, CONTROL, NOINVERT
+    "O",    ID_FILE_OPEN,   VIRTKEY, CONTROL, NOINVERT
+    "S",    ID_FILE_SAVE,   VIRTKEY, CONTROL, NOINVERT
+    "E",    32781,          VIRTKEY, CONTROL, NOINVERT
+    VK_OEM_COMMA, 32787,   VIRTKEY, CONTROL, NOINVERT
+    "Q",    ID_APP_EXIT,    VIRTKEY, CONTROL, NOINVERT
+END
+
+/////////////////////////////////////////////////////////////////////////////
+// About dialog (IDD_ABOUTBOX = 130)
+130 DIALOGEX 0, 0, 240, 80
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "DeepMetria 정보"
+FONT 9, "맑은 고딕", 400, 0, 0x81
+BEGIN
+    LTEXT       "DeepMetria — LLM 기반 데이터 분석 데스크톱", -1, 16, 12, 208, 12
+    LTEXT       "버전 1.0  ·  (c) 2026 DeepMetria",          -1, 16, 30, 208, 12
+    DEFPUSHBUTTON "확인", IDOK, 92, 56, 56, 16, WS_GROUP
+END
+
+/////////////////////////////////////////////////////////////////////////////
+// Export dialog (IDD_EXPORT = 131)
+131 DIALOGEX 0, 0, 400, 220
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "내보내기"
+FONT 9, "맑은 고딕", 400, 0, 0x81
+BEGIN
+    // 좌측 미리보기
+    GROUPBOX    "미리보기", -1,            8,   8, 140, 160
+    LTEXT       "",         1010,          12,  20, 132, 144
+
+    // 우측 옵션
+    GROUPBOX    "내보낼 범위", -1,        156,   8, 236,  52
+    AUTORADIOBUTTON "선택중인 그래프만", 1013, 164, 22, 140, 12, WS_GROUP
+    AUTORADIOBUTTON "대시보드 전체",      1014, 164, 38, 140, 12
+
+    GROUPBOX    "파일 형식",   -1,        156,  64, 236,  28
+    AUTORADIOBUTTON "PNG", 1015, 164, 76, 36, 12, WS_GROUP
+    AUTORADIOBUTTON "BMP", 1016, 204, 76, 36, 12
+    AUTORADIOBUTTON "JPG", 1017, 244, 76, 36, 12
+    AUTORADIOBUTTON "PDF", 1018, 284, 76, 36, 12
+
+    GROUPBOX    "해상도",      -1,        156,  96, 236,  28
+    COMBOBOX    1019, 164, 108, 180, 60, CBS_DROPDOWNLIST | WS_VSCROLL
+
+    GROUPBOX    "저장 경로",   -1,        156, 128, 236,  36
+    EDITTEXT    1011,  164, 142, 164, 14, ES_AUTOHSCROLL
+    PUSHBUTTON  "찾아보기...", 1012, 332, 141,  52, 16
+
+    DEFPUSHBUTTON "저장",   IDOK,     284, 192, 52, 20
+    PUSHBUTTON    "취소",   IDCANCEL, 340, 192, 44, 20
+END
+
+/////////////////////////////////////////////////////////////////////////////
+// Settings dialog (IDD_SETTINGS = 132)
+132 DIALOGEX 0, 0, 400, 260
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "옵션 — DeepMetria"
+FONT 9, "맑은 고딕", 400, 0, 0x81
+BEGIN
+    LISTBOX     1020,  8,  8, 100, 200, LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
+
+    LTEXT       "제공자",          -1, 120,  12, 80, 12
+    COMBOBOX    1023, 120,  26, 260, 100, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+
+    LTEXT       "모델",            -1, 120,  50, 80, 12
+    COMBOBOX    1021, 120,  64, 260, 120, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+
+    LTEXT       "API 키",          -1, 120,  90, 80, 12
+    LTEXT       "Windows DPAPI 암호화 저장", -1, 120, 102, 200, 10
+    EDITTEXT    1022, 120, 116, 260,  14, ES_AUTOHSCROLL | ES_PASSWORD | WS_TABSTOP
+
+    PUSHBUTTON    "연결 테스트", 1025, 120, 140, 64, 16
+    LTEXT         "현재 입력된 제공자/모델/키로 짧은 요청을 보내 응답 확인", -1, 188, 142, 200, 10
+
+    DEFPUSHBUTTON "확인",   IDOK,     220, 232, 44, 16
+    PUSHBUTTON    "취소",   IDCANCEL, 268, 232, 44, 16
+    PUSHBUTTON    "적용",   1024,     316, 232, 44, 16
+END
+
+/////////////////////////////////////////////////////////////////////////////
+// Retry dialog (IDD_RETRY = 133)
+133 DIALOGEX 0, 0, 300, 140
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "DeepMetria"
+FONT 9, "맑은 고딕", 400, 0, 0x81
+BEGIN
+    LTEXT   "LLM API 응답 오류",                       -1,   60,  16, 220, 14
+    LTEXT   "분석 요청 중 LLM 응답을 받지 못했습니다.",  -1,   60,  36, 228, 12
+    LTEXT   "네트워크를 확인하거나 다른 제공자로 재시도하세요.", -1, 60, 50, 228, 12
+    LTEXT   "입력하신 데이터와 질문은 유지됩니다.",      -1,   60,  64, 228, 12
+    PUSHBUTTON    "↻ 재시도",   1030,  40, 108, 60, 18
+    PUSHBUTTON    "GPT로 전환", 1031, 110, 108, 68, 18
+    PUSHBUTTON    "취소",       IDCANCEL, 188, 108, 44, 18
+END
+
+/////////////////////////////////////////////////////////////////////////////
+// Query input dialog — SelfTest DialogResourceCommand 유지용 (절대 삭제 금지)
+200 DIALOGEX 0, 0, 320, 140
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "자연어 질문"
+FONT 9, "맑은 고딕", 400, 0, 0x81
+BEGIN
+    LTEXT       "데이터에 대한 분석 질문을 입력하세요:", -1,  12, 10, 296, 12
+    EDITTEXT    1001,  12,  26, 296, 72, ES_AUTOVSCROLL | ES_MULTILINE | ES_WANTRETURN | WS_VSCROLL
+    DEFPUSHBUTTON "분석 시작(&S)", IDOK,     180, 110, 60, 18
+    PUSHBUTTON    "취소(&C)",      IDCANCEL, 248, 110, 60, 18
+END
+
+/////////////////////////////////////////////////////////////////////////////
+// String table — CSingleDocTemplate 문서 타입 식별에 필수 (절대 삭제 금지)
+STRINGTABLE
+BEGIN
+    128   "DeepMetria\n\nDeepMetria\n\n\nDeepMetria.Document\nDeepMetria.Document"
+    129   "\nDeepMetria\n\n불러올 데이터 파일 (*.csv;*.json)\n.csv\n"
+END
+
+STRINGTABLE
+BEGIN
+    AFX_IDS_APP_TITLE   "DeepMetria"
+    AFX_IDS_IDLEMESSAGE "준비됨"
+END
+
+STRINGTABLE
+BEGIN
+    ID_FILE_NEW             "새 문서를 만듭니다\n새로 만들기"
+    ID_FILE_OPEN            "기존 데이터 파일을 엽니다\n열기"
+    ID_FILE_SAVE            "파일을 저장합니다\n저장"
+    ID_FILE_MRU_FILE1       "최근 사용한 파일을 엽니다"
+    ID_APP_ABOUT            "프로그램 정보 및 저작권\n정보"
+    ID_APP_EXIT             "프로그램을 종료합니다\n종료"
+    32771                   "자연어 질문으로 분석합니다\nAI 분석"
+    32772                   "AI 데이터 요약을 생성합니다\nAI 요약"
+    32774                   "대시보드를 PNG/BMP로 내보냅니다\n내보내기"
+    32773                   "대시보드 뷰를 표시합니다\n대시보드"
+    32776                   "데이터 요약을 표시합니다\n데이터 요약"
+    32777                   "질문 입력창을 표시합니다\n질문 입력"
+    32779                   "차트를 추가합니다\n차트 추가"
+    32778                   "자연어 질문을 입력합니다\n질문"
+    32781                   "파일을 내보냅니다\n내보내기"
+    32782                   "이미지로 내보냅니다\n이미지 내보내기"
+    32783                   "대시보드 전체를 내보냅니다\n대시보드 내보내기"
+    32780                   "자동 요약을 다시 실행합니다\n자동 요약"
+    ID_EDIT_SELECT_ALL      "모두 선택합니다\n모두 선택"
+    59142                   "AI"
+    59143                   "PROGRESS"
+    59144                   "LLM"
+END
+
+#endif    // Korean

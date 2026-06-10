@@ -1,0 +1,74 @@
+# === 비밀 / API 키 ===
+secrets.json
+*.secret
+*.key
+
+# === Visual Studio / MSBuild 산출물 ===
+x64/
+Debug/
+Release/
+*.exe
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.obj
+*.iobj
+*.ipdb
+*.tlog
+*.idb
+*.aps
+*.user
+*.suo
+*.opensdf
+*.sdf
+*.opendb
+*.vcxproj.user
+.vs/
+
+# === 빌드/파이프라인 로그·결과물 ===
+build_rebuild.log
+build.log
+build_check.log
+build_out.txt
+build_output.txt
+build_r*.log
+build_u*.log
+build_rc_log.txt
+selftest_*.txt
+pipeline_result.json
+tests/test_results.txt
+tests/screenshots/
+.tmp_pptx/
+_legacy/
+
+# === OMC / Claude Code 작업 상태 ===
+.omc/
+.claude/temp/
+.claude/cache/
+.claude/settings.local.json
+.claude/worktrees/
+
+# === Python (UI 자동화 파이프라인) ===
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# === OS / 에디터 ===
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+*.swo
+*~
+
+# === 임시 파일 ===
+*.tmp
+*.bak
+*.orig
